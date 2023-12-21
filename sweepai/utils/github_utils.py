@@ -41,7 +41,7 @@ def make_valid_string(string: str):
 # Therefore, we can remove this function.
 
 
-def get_token(installation_id: int):
+def get_token(client_id: str, client_secret: str):
     data = {
         'grant_type': 'client_credentials',
         'client_id': client_id,
@@ -54,10 +54,6 @@ def get_token(installation_id: int):
     if response.status_code != 200:
         raise Exception('Failed to get access token')
     return response.json()['access_token']
-            time.sleep(timeout)
-    raise Exception(
-        "Could not get token, please double check your PRIVATE_KEY and GITHUB_APP_ID in the .env file. Make sure to restart uvicorn after."
-    )
 
 
 # GitLab has a Python package named 'python-gitlab' for interacting with the GitLab API.
@@ -67,7 +63,7 @@ def get_token(installation_id: int):
 import gitlab
 
 def get_gitlab_client(token: str):
-    gl = gitlab.Gitlab('https://gitlab.com', private_token=token)
+    gl = gitlab.Gitlab('https://gitlab.com', oauth_token=token)
     return gl
 
 
@@ -91,7 +87,6 @@ def get_installation_id(username: str) -> str:
 
 
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
-
 
 @dataclass
 class ClonedRepo:
