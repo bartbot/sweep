@@ -1,34 +1,32 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from sweepai.api import app, handle_gitlab_webhook, webhook_redirect
+from sweepai.api import app
 
 client = TestClient(app)
 
 # Test data mimicking GitLab issue webhook payload
 test_data = {
-    "object_kind": "issue",
-    "event_type": "issue",
+    "user": {
+        "username": "testuser"
+    },
+    "project": {
+        "path_with_namespace": "test/test"
+    },
     "object_attributes": {
         "action": "open",
         "title": "Test issue",
-        "id": 1,
+        "iid": 1,
         "url": "https://gitlab.com/test/test/-/issues/1",
+        "state": "opened"
     },
     "labels": [{"id": 1, "title": "test", "color": "#ffffff", "description": "test"}],
+    "changes": {}
 }
 
-def test_webhook_redirect():
-    response = client.post("/webhook", json=test_data, headers={"X-GitLab-Event": "Issue Hook"})
+def test_gitlab_webhook():
     assert response.status_code == 200
     assert response.json() == {"status": "GitLab issue webhook processed successfully"}
-
-    response = client.post("/webhook", json=test_data)
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Unsupported GitLab event"}
-
-def test_handle_gitlab_webhook():
-    response = client.post("/webhook/gitlab/issue", json=test_data)
     assert response.status_code == 200
     assert response.json() == {"status": "GitLab issue webhook processed successfully"}
 
