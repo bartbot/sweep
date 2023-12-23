@@ -40,6 +40,7 @@ from sweepai.utils.buttons import (Button, ButtonList, check_button_activated,
 from sweepai.utils.chat_logger import ChatLogger
 from sweepai.utils.event_logger import posthog
 from sweepai.utils.gitlab_utils import get_gitlab_client
+from gitlab import Gitlab
 from sweepai.utils.progress import TicketProgress
 from sweepai.utils.safe_pqueue import SafePriorityQueue
 from sweepai.utils.search_utils import index_full_repository
@@ -194,6 +195,21 @@ def call_write_documentation(*args, **kwargs):
     thread = threading.Thread(target=write_documentation, args=args, kwargs=kwargs)
     thread.start()
 
+
+@app.api_route("/webhook/gitlab/issue", methods=["POST"])
+def gitlab_issue_endpoint(request: Request):
+    # Handle GitLab issue API interactions
+    pass
+
+@app.api_route("/webhook/gitlab/pipeline", methods=["POST"])
+def gitlab_pipeline_endpoint(request: Request):
+    # Handle GitLab pipeline API interactions
+    pass
+
+@app.api_route("/webhook/gitlab/merge_request", methods=["POST"])
+def gitlab_mr_endpoint(request: Request):
+    # Handle GitLab MR API interactions
+    pass
 
 @app.api_route("/webhook/gitlab", methods=["POST", "GET"])
 async def webhook_redirect(raw_request: Request):
