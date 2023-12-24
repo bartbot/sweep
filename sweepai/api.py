@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import ValidationError
 
+from sweepai.gitlab_utils import *
 from sweepai import health
 from sweepai.config.client import (DEFAULT_RULES, RESTART_SWEEP_BUTTON,
                                    REVERT_CHANGED_FILES_TITLE, RULES_LABEL,
@@ -195,7 +196,7 @@ def call_write_documentation(*args, **kwargs):
     thread.start()
 
 
-@app.api_route("/webhook/gitlab", methods=["POST", "GET"])
+@app.post("/webhook/gitlab")
 async def webhook_redirect(raw_request: Request):
     # Function to redirect to the appropriate GitLab webhook handler
     event = raw_request.headers.get("X-Gitlab-Event")
@@ -219,7 +220,7 @@ async def handle_gitlab_issue_webhook(raw_request: Request):
     request_headers = raw_request.headers
     event = request_headers.get("X-Gitlab-Event")
     # Check if event is specific to GitLab Issue Hook
-    if event != "Issue Hook":
+    if event != "Merge Request Hook" and event != "Issue Hook":
         raise HTTPException(status_code=400, detail="Unsupported GitLab event")
     # Process the GitLab Issue Hook event
         # Extract necessary information and perform actions
@@ -293,9 +294,9 @@ def progress(tracking_id: str = Path(...)):
                 logger.info(f"Received event: {event}, {action}")
 
                 def worker():
-                    _, g = get_gitlab_client(request_dict["installation"]["id"])
-                    repo = g.get_repo(request_dict["repository"]["full_name"])
-                    pr = repo.get_pull(request_dict["pull_request"]["number"])
+                    project_id = request_dict["repository"]["id"]
+                    merge_request_iid = request_dict["merge_request"]["iid"]
+                    merge_request = get_gitlab_merge_request(project_id, merge_request_iid)
                     # if the pr already has a comment from sweep bot do nothing
                     time.sleep(60)
                     if any(
