@@ -119,6 +119,10 @@ class ClonedRepo:
 
     @cached_property
     def repo_dir(self):
+        gitlab_instance = get_gitlab_client(self.token)
+        # Since self.repo_full_name is already in 'namespace/project' format, we can use it directly
+        namespace, project_name = self.repo_full_name.split('/')
+        project_id = get_project_id(gitlab_instance, namespace, project_name)
         self.repo = (
             Github(self.token).get_repo(self.repo_full_name)
             if not self.repo
@@ -131,12 +135,16 @@ class ClonedRepo:
         if self.branch:
             return os.path.join(
                 REPO_CACHE_BASE_DIR,
-                self.repo_full_name,
+                str(project_id),
                 hash_hex,
                 parse_collection_name(self.branch),
             )
         else:
-            return os.path.join("/tmp/cache/repos", self.repo_full_name, hash_hex)
+            return os.path.join(
+                REPO_CACHE_BASE_DIR,
+                str(project_id),
+                hash_hex
+            )
 
     @property
     def clone_url(self):
