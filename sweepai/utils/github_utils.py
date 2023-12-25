@@ -23,8 +23,9 @@ from redis.retry import Retry
 
 from sweepai.config.client import SweepConfig
 from sweepai.config.server import GITHUB_APP_ID, GITHUB_APP_PEM, REDIS_URL
-from sweepai.logn import logger
+# Previous logger import removed to use loguru's logger instead
 from sweepai.utils.ctags import CTags
+from loguru import logger
 from sweepai.utils.ctags_chunker import get_ctags_for_file
 from sweepai.utils.tree_utils import DirectoryTree
 
@@ -52,10 +53,10 @@ def get_gitlab_token(client_id: str, client_secret: str):
     }
     response = requests.post('https://gitlab.com/oauth/token', data=data, headers=headers)
     if response.status_code != 200:
-        raise Exception('Failed to get access token')
+        logger.exception('Failed to get access token')
     return response.json()['access_token']
             time.sleep(timeout)
-    raise Exception(
+    logger.exception(
         "Could not get token, please double check your PRIVATE_KEY and GITHUB_APP_ID in the .env file. Make sure to restart uvicorn after."
     )
 
@@ -76,9 +77,9 @@ def get_project_id(gitlab_instance: gitlab.Gitlab, namespace: str, project_name:
         project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
         return project.id
     except gitlab.exceptions.GitlabGetError as e:
-        raise Exception(f'Failed to get project ID: {str(e)}')
+        logger.exception(f'Failed to get project ID: {str(e)}')
     except Exception as e:
-        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+        logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
 
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
@@ -112,9 +113,9 @@ class ClonedRepo:
 
     @cached_property
     def zip_path(self):
-        logger.info("Zipping repository...")
+        logger.info(f"Zipping repository: {self.repo_dir}")
         shutil.make_archive(self.repo_dir, "zip", self.repo_dir)
-        logger.info("Done zipping")
+        logger.info(f"Done zipping: {self.repo_dir}.zip")
         return f"{self.repo_dir}.zip"
 
     @cached_property
@@ -167,8 +168,8 @@ class ClonedRepo:
             try:
                 repo = git.Repo(self.cached_dir)
                 repo.remotes.origin.pull()
-            except Exception:
-                logger.error("Could not pull repo")
+            except Exception as e:
+                logger.exception("Could not pull repo")
                 shutil.rmtree(self.cached_dir, ignore_errors=True)
                 repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
             logger.info("Repo already cached, copying")
@@ -193,8 +194,8 @@ class ClonedRepo:
         try:
             shutil.rmtree(self.repo_dir)
             os.remove(self.zip_path)
-        except:
-            pass
+        except Exception as e:
+            logger.exception("Failed to delete repository")
 
     def list_directory_tree(
         self,
@@ -333,7 +334,7 @@ class ClonedRepo:
                 contents = f.read()
             return contents
         else:
-            raise FileNotFoundError(f"{local_path} does not exist.")
+            logger.exception(f"{local_path} does not exist.")
 
     def get_num_files_from_repo(self):
         # subprocess.run(["git", "config", "--global", "http.postBuffer", "524288000"])
@@ -357,7 +358,7 @@ class ClonedRepo:
                 if time_limited and commit.authored_datetime.replace(
                     tzinfo=None
                 ) <= cut_off_date.replace(tzinfo=None):
-                    logger.info(f"Exceeded cut off date, stopping...")
+                    logger.info("Exceeded cut off date, stopping...")
                     break
                 repo = get_github_client(self.installation_id)[1].get_repo(
                     self.repo_full_name
@@ -369,14 +370,14 @@ class ClonedRepo:
                 lines = diff.count("\n")
                 # total diff lines must not exceed 200
                 if lines + line_count > limit:
-                    logger.info(f"Exceeded {limit} lines of diff, stopping...")
+                    logger.info("Exceeded limit of diff lines, stopping...")
                     break
                 commit_history.append(
                     f"<commit>\nAuthor: {commit.author.name}\nMessage: {commit.message}\n{diff}\n</commit>"
                 )
                 line_count += lines
-        except:
-            logger.error(f"An error occurred: {traceback.print_exc()}")
+        except Exception as e:
+            logger.exception("An error occurred", exc_info=e)
         return commit_history
 
     def get_similar_file_paths(self, file_path: str, limit: int = 10):
