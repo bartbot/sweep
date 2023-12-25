@@ -54,7 +54,7 @@ def get_gitlab_token(client_id: str, client_secret: str):
     if response.status_code != 200:
         raise Exception('Failed to get access token')
     return response.json()['access_token']
-            time.sleep(timeout)
+                        time.sleep(timeout)
     raise Exception(
         "Could not get token, please double check your PRIVATE_KEY and GITHUB_APP_ID in the .env file. Make sure to restart uvicorn after."
     )
@@ -62,7 +62,7 @@ def get_gitlab_token(client_id: str, client_secret: str):
 
 # GitLab has a Python package named 'python-gitlab' for interacting with the GitLab API.
 # We will use this package to create a GitLab client.
-# First, install the package using pip: pip install python-gitlab
+
 
 import gitlab
 
@@ -120,8 +120,7 @@ class ClonedRepo:
     @cached_property
     def repo_dir(self):
         gitlab_instance = get_gitlab_client(self.token)
-        # Since self.repo_full_name is already in 'namespace/project' format, we can use it directly
-        namespace, project_name = self.repo_full_name.split('/')
+                namespace, project_name = self.repo_full_name.split('/')
         project_id = get_project_id(gitlab_instance, namespace, project_name)
         self.repo = (
             Github(self.token).get_repo(self.repo_full_name)
@@ -336,7 +335,7 @@ class ClonedRepo:
             raise FileNotFoundError(f"{local_path} does not exist.")
 
     def get_num_files_from_repo(self):
-        # subprocess.run(["git", "config", "--global", "http.postBuffer", "524288000"])
+        
         self.git_repo.git.checkout(self.branch)
         file_list = self.get_file_list()
         return len(file_list)
