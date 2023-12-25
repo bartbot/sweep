@@ -71,13 +71,14 @@ def get_gitlab_client(access_token: str) -> gitlab.Gitlab:
     return gl
 
 
-def get_project_id(gitlab_instance: gitlab.Gitlab, namespace: str, project_name: str) -> int:
+def get_project_id_from_gitlab(gitlab_instance: gitlab.Gitlab, namespace: str, project_name: str) -> int:
     try:
         project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
         return project.id
     except gitlab.exceptions.GitlabGetError as e:
-        raise Exception(f'Failed to get project ID: {str(e)}')
+        raise Exception('Failed to get project ID: {str(e)}')
     except Exception as e:
+        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
         raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
 
@@ -102,7 +103,7 @@ class ClonedRepo:
         )
         self.branch = self.branch or SweepConfig.get_branch(self.repo)
         namespace, project_name = self.repo_full_name.split('/')
-        project_id = get_project_id(gitlab_instance, namespace, project_name)
+        project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
         return os.path.join(
             REPO_CACHE_BASE_DIR,
             str(project_id),
@@ -122,7 +123,7 @@ class ClonedRepo:
         gitlab_instance = get_gitlab_client(self.token)
         # Since self.repo_full_name is already in 'namespace/project' format, we can use it directly
         namespace, project_name = self.repo_full_name.split('/')
-        project_id = get_project_id(gitlab_instance, namespace, project_name)
+        project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
         self.repo = (
             Github(self.token).get_repo(self.repo_full_name)
             if not self.repo
@@ -150,7 +151,7 @@ class ClonedRepo:
     def clone_url(self) -> str:
         gitlab_instance = get_gitlab_client(self.token)
         namespace, project_name = self.repo_full_name.split('/')
-        project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
         return project.http_url_to_repo
 
     def clone(self):
