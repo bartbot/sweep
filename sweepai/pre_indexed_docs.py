@@ -9,7 +9,7 @@
 # "https://react.dev/" is good, "https://react.dev/docs/getting-started" is not.
 # Write a natural language description of what the package is and how it's used to help Sweep.
 
-DOCS_ENDPOINTS = {
+DOCS_ENDPOINTS: dict[str, tuple[str, str]] = {
     "Modal Labs": (
         "https://modal.com/docs/guide",
         "Modal is a platform for building and deploying serverless applications.",
