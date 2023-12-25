@@ -182,15 +182,12 @@ class ClonedRepo:
 
     def __post_init__(self):
         subprocess.run(["git", "config", "--global", "http.postBuffer", "524288000"])
-        self.repo = (
-            Github(self.token).get_repo(self.repo_full_name)
-            if not self.repo
-            else self.repo
-        )
-        self.commit_hash = self.repo.get_commits()[0].sha
-        self.token = self.token or get_token(self.installation_id)
+        gitlab_instance = get_gitlab_client(self.token)
+        namespace, project_name = self.repo_full_name.split('/')
+        self.project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        self.commit_hash = next(self.project.commits.list(as_list=False)).id
         self.git_repo = self.clone()
-        self.branch = self.branch or SweepConfig.get_branch(self.repo)
+        self.branch = self.branch or self.project.default_branch
 
     def delete(self):
         try:
