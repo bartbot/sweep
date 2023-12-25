@@ -71,23 +71,14 @@ def get_gitlab_client(access_token: str) -> gitlab.Gitlab:
     return gl
 
 
-def get_installation_id(username: str) -> str:
-    jwt = get_jwt()
-    response = requests.get(
-        f"https://api.github.com/users/{username}/installation",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": "Bearer " + jwt,
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    obj = response.json()
+def get_project_id(gitlab_instance: gitlab.Gitlab, namespace: str, project_name: str) -> int:
     try:
-        return obj["id"]
-    except SystemExit:
-        raise SystemExit
-    except:
-        raise Exception("Could not get installation id, probably not installed")
+        project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        return project.id
+    except gitlab.exceptions.GitlabGetError as e:
+        raise Exception(f'Failed to get project ID: {str(e)}')
+    except Exception as e:
+        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
 
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
