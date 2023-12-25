@@ -48,8 +48,8 @@ DOCS_ENDPOINTS = {
     ),
     "GitLab Pipelines API": (
     "python-gitlab 4.2.0": (
-        "https://python-gitlab.readthedocs.io/en/stable/",
-        "python-gitlab is a package that provides access to the GitLab server API. It supports the v4 API of GitLab and provides a CLI tool called gitlab.",
+        f"https://python-gitlab.readthedocs.io/en/stable/",
+        f"python-gitlab is a package that provides access to the GitLab server API. It supports the v4 API of GitLab and provides a CLI tool called gitlab.",
     ),
         "https://docs.gitlab.com/ee/api/pipelines.html",
         "GitLab Pipelines API provides operations for managing CI/CD pipelines in GitLab projects.",
