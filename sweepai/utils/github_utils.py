@@ -115,7 +115,7 @@ class ClonedRepo:
     @cached_property
     def repo_dir(self):
         gitlab_instance = get_gitlab_client(self.token)
-        # Since self.repo_full_name is already in 'namespace/project' format, we can use it directly
+        # Use the refactored function to get the project ID from GitLab
         namespace, project_name = self.repo_full_name.split('/')
         project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
         self.repo = (
