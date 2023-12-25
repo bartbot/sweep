@@ -91,7 +91,6 @@ class ClonedRepo:
     branch: str | None = None
     token: str | None = None
     repo: Any | None = None
-
     @cached_property
     def cached_dir(self):
         gitlab_instance = get_gitlab_client(self.token)
