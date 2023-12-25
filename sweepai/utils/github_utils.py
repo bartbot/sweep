@@ -147,10 +147,11 @@ class ClonedRepo:
             )
 
     @property
-    def clone_url(self):
-        return (
-            f"https://x-access-token:{self.token}@github.com/{self.repo_full_name}.git"
-        )
+    def clone_url(self) -> str:
+        gitlab_instance = get_gitlab_client(self.token)
+        namespace, project_name = self.repo_full_name.split('/')
+        project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        return project.http_url_to_repo
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
