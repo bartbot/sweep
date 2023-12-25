@@ -42,9 +42,9 @@ DOCS_ENDPOINTS = {
         "https://platform.openai.com/docs/",
         "OpenAI is a client for the OpenAI API.",
     ),
-    "PyGitHub": (
-        "https://pygithub.readthedocs.io/en/stable/",
-        "PyGitHub is a client for the GitHub API.",
+    "PyGitLab": (
+        "https://python-gitlab.readthedocs.io/en/stable/index.html/",
+        "PyGitLab is a client for the GitLab API.",
     ),
     "Laravel": (
         "https://laravel.com/docs",
