@@ -72,23 +72,14 @@ def get_gitlab_client(access_token: str) -> gitlab.Gitlab:
     return gl
 
 
-def get_installation_id(username: str) -> str:
-    jwt = get_jwt()
-    response = requests.get(
-        f"https://api.github.com/users/{username}/installation",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": "Bearer " + jwt,
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    obj = response.json()
+def get_project_id(gitlab_instance: gitlab.Gitlab, namespace: str, project_name: str) -> int:
     try:
-        return obj["id"]
-    except SystemExit:
-        raise SystemExit
-    except:
-        raise Exception("Could not get installation id, probably not installed")
+        project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        return project.id
+    except gitlab.exceptions.GitlabGetError as e:
+        raise Exception(f'Failed to get project ID: {str(e)}')
+    except Exception as e:
+        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
 
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
@@ -104,15 +95,18 @@ class ClonedRepo:
 
     @cached_property
     def cached_dir(self):
+        gitlab_instance = get_gitlab_client(self.token)
         self.repo = (
-            Github(self.token).get_repo(self.repo_full_name)
+            gitlab_instance.projects.get(self.repo_full_name)
             if not self.repo
             else self.repo
         )
         self.branch = self.branch or SweepConfig.get_branch(self.repo)
+        namespace, project_name = self.repo_full_name.split('/')
+        project_id = get_project_id(gitlab_instance, namespace, project_name)
         return os.path.join(
             REPO_CACHE_BASE_DIR,
-            self.repo_full_name,
+            str(project_id),
             "base",
             parse_collection_name(self.branch),
         )
@@ -126,6 +120,10 @@ class ClonedRepo:
 
     @cached_property
     def repo_dir(self):
+        gitlab_instance = get_gitlab_client(self.token)
+        # Since self.repo_full_name is already in 'namespace/project' format, we can use it directly
+        namespace, project_name = self.repo_full_name.split('/')
+        project_id = get_project_id(gitlab_instance, namespace, project_name)
         self.repo = (
             Github(self.token).get_repo(self.repo_full_name)
             if not self.repo
@@ -138,18 +136,23 @@ class ClonedRepo:
         if self.branch:
             return os.path.join(
                 REPO_CACHE_BASE_DIR,
-                self.repo_full_name,
+                str(project_id),
                 hash_hex,
                 parse_collection_name(self.branch),
             )
         else:
-            return os.path.join("/tmp/cache/repos", self.repo_full_name, hash_hex)
+            return os.path.join(
+                REPO_CACHE_BASE_DIR,
+                str(project_id),
+                hash_hex
+            )
 
     @property
-    def clone_url(self):
-        return (
-            f"https://x-access-token:{self.token}@github.com/{self.repo_full_name}.git"
-        )
+    def clone_url(self) -> str:
+        gitlab_instance = get_gitlab_client(self.token)
+        namespace, project_name = self.repo_full_name.split('/')
+        project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        return project.http_url_to_repo
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
@@ -180,15 +183,12 @@ class ClonedRepo:
 
     def __post_init__(self):
         subprocess.run(["git", "config", "--global", "http.postBuffer", "524288000"])
-        self.repo = (
-            Github(self.token).get_repo(self.repo_full_name)
-            if not self.repo
-            else self.repo
-        )
-        self.commit_hash = self.repo.get_commits()[0].sha
-        self.token = self.token or get_token(self.installation_id)
+        gitlab_instance = get_gitlab_client(self.token)
+        namespace, project_name = self.repo_full_name.split('/')
+        self.project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        self.commit_hash = next(self.project.commits.list(as_list=False)).id
         self.git_repo = self.clone()
-        self.branch = self.branch or SweepConfig.get_branch(self.repo)
+        self.branch = self.branch or self.project.default_branch
 
     def delete(self):
         try:
