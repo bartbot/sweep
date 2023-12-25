@@ -57,8 +57,14 @@ DISCORD_FEEDBACK_WEBHOOK_URL = os.environ.get("DISCORD_FEEDBACK_WEBHOOK_URL")
 SWEEP_HEALTH_URL = os.environ.get("SWEEP_HEALTH_URL")
 DISCORD_STATUS_WEBHOOK_URL = os.environ.get("DISCORD_STATUS_WEBHOOK_URL")
 
-# goes under Modal 'github' secret name
+# goes under Modal 'gitlab_oauth' secret name
 GITLAB_APP_ID = os.environ.get("GITLAB_APP_ID", os.environ.get("APP_ID"))
+GITLAB_APP_SECRET = os.environ.get("GITLAB_APP_SECRET")
+if not GITLAB_APP_SECRET:
+    raise ValueError("GitLab App Secret not found in environment variables.")
+GITLAB_REDIRECT_URI = os.environ.get("GITLAB_REDIRECT_URI")
+if not GITLAB_REDIRECT_URI:
+    raise ValueError("GitLab Redirect URI not found in environment variables.")
 # deprecated: old logic transfer so upstream can use this
 if GITLAB_APP_ID is None:
     if ENV == "prod":
