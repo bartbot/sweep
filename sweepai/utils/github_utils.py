@@ -94,15 +94,18 @@ class ClonedRepo:
 
     @cached_property
     def cached_dir(self):
+        gitlab_instance = get_gitlab_client(self.token)
         self.repo = (
-            Github(self.token).get_repo(self.repo_full_name)
+            gitlab_instance.projects.get(self.repo_full_name)
             if not self.repo
             else self.repo
         )
         self.branch = self.branch or SweepConfig.get_branch(self.repo)
+        namespace, project_name = self.repo_full_name.split('/')
+        project_id = get_project_id(gitlab_instance, namespace, project_name)
         return os.path.join(
             REPO_CACHE_BASE_DIR,
-            self.repo_full_name,
+            str(project_id),
             "base",
             parse_collection_name(self.branch),
         )
