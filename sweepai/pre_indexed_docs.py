@@ -43,7 +43,7 @@ DOCS_ENDPOINTS: dict[str, tuple[str, str]] = {
         "OpenAI is a client for the OpenAI API.",
     ),
     "PyGitHub": (
-        "https://pygitlab.readthedocs.io/en/stable/",
+        "https://pygithub.readthedocs.io/en/stable/",
         "PyGitLab is a client for the GitLab API.",
     ),
     "GitLab Pipelines API": (
