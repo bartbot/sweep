@@ -115,6 +115,7 @@ class ClonedRepo:
         return f"{self.repo_dir}.zip"
         except Exception as e:
             logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     @cached_property
     def repo_dir(self):
@@ -132,6 +133,7 @@ class ClonedRepo:
         hash_obj = hashlib.sha256(curr_time_str)
         hash_hex = hash_obj.hexdigest()
         except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
             logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
         if self.branch:
             return os.path.join(
@@ -155,6 +157,7 @@ class ClonedRepo:
         return project.http_url_to_repo
         except Exception as e:
             logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
@@ -172,7 +175,8 @@ class ClonedRepo:
             try:
                 repo = git.Repo(self.cached_dir)
                 repo.remotes.origin.pull()
-            except Exception:
+            except Exception as e:
+                logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
                 logger.error("Could not pull repo")
                 shutil.rmtree(self.cached_dir, ignore_errors=True)
                 repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
@@ -201,6 +205,7 @@ class ClonedRepo:
             shutil.rmtree(self.repo_dir)
             os.remove(self.zip_path)
         except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
             logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     def list_directory_tree(
