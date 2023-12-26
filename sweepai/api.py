@@ -338,16 +338,14 @@ def progress(tracking_id: str = Path(...)):
                     _, g = get_gitlab_client(request.installation.id)
                     repo = g.get_repo(request.repository.full_name)
 
-                    labels = repo.labels.list()
-                    label_names = [label['name'] for label in labels]
+                    labels = repo.get_labels()
+                    label_names = [label.name for label in labels]
 
                     if GITLAB_LABEL_NAME not in label_names:
-                        repo.labels.create(
-                            {
-                                'name': GITLAB_LABEL_NAME,
-                                'color': GITLAB_LABEL_COLOR,
-                                'description': GITLAB_LABEL_DESCRIPTION,
-                            }
+                        repo.create_label(
+                            name=GITLAB_LABEL_NAME,
+                            color=GITLAB_LABEL_COLOR,
+                            description=GITLAB_LABEL_DESCRIPTION
                         )
                     current_issue = repo.get_issue(number=request.issue.number)
                     current_issue.add_to_labels(GITLAB_LABEL_NAME)
