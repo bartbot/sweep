@@ -14,7 +14,7 @@ from typing import Any
 import git
 import rapidfuzz
 import requests
-from github import Github
+from gitlab import Gitlab
 from jwt import encode
 from redis import Redis
 from redis.backoff import ExponentialBackoff
@@ -64,9 +64,9 @@ def get_gitlab_token(client_id: str, client_secret: str):
 # We will use this package to create a GitLab client.
 # First, install the package using pip: pip install python-gitlab
 
-import gitlab
+from gitlab import Gitlab
 
-def get_gitlab_client(access_token: str) -> gitlab.Gitlab:
+def get_gitlab_client(access_token: str) -> Gitlab:
     gl = gitlab.Gitlab('https://gitlab.com', private_token=access_token)
     return gl
 
@@ -146,14 +146,14 @@ class ClonedRepo:
         gitlab_instance = get_gitlab_client(self.token)
         namespace, project_name = self.repo_full_name.split('/')
         project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
-        return project.http_url_to_repo
+        return gitlab_instance.projects.get(project_id).http_url_to_repo
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
             logger.info("Cloning repo...")
             if self.branch:
                 repo = git.Repo.clone_from(
-                    self.clone_url, self.cached_dir, branch=self.branch
+                    self.clone_url, self.cached_dir, branch=self.branch, env={'GIT_SSL_NO_VERIFY': 'true'}
                 )
             else:
                 repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
@@ -165,7 +165,7 @@ class ClonedRepo:
             except Exception:
                 logger.error("Could not pull repo")
                 shutil.rmtree(self.cached_dir, ignore_errors=True)
-                repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
+                repo = git.Repo.clone_from(self.clone_url, self.cached_dir, env={'GIT_SSL_NO_VERIFY': 'true'})
             logger.info("Repo already cached, copying")
         logger.info("Copying repo...")
         shutil.copytree(
