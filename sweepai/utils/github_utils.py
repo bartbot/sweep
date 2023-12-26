@@ -78,7 +78,7 @@ def get_project_id_from_gitlab(gitlab_instance: gitlab.Gitlab, namespace: str, p
     except gitlab.exceptions.GitlabGetError as e:
         logger.exception(f'Failed to get project ID: {str(e)}')
     except Exception as e:
-               logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
         raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
 
@@ -123,7 +123,7 @@ class ClonedRepo:
             if not self.repo
             else self.repo
         )
-        self.branch = self.branch or SweepConfig.get_branch(self.repo)
+
         curr_time_str = str(time.time()).encode("utf-8")
         hash_obj = hashlib.sha256(curr_time_str)
         hash_hex = hash_obj.hexdigest()
