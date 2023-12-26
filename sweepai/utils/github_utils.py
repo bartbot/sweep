@@ -76,7 +76,7 @@ def get_project_id_from_gitlab(gitlab_instance: gitlab.Gitlab, namespace: str, p
         project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
         return project.id
     except gitlab.exceptions.GitlabGetError as e:
-        raise Exception('Failed to get project ID: {str(e)}')
+        logger.exception(f'Failed to get project ID: {str(e)}')
     except Exception as e:
         raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
         raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
