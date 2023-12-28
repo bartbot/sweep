@@ -31,7 +31,16 @@ from sweepai.utils.tree_utils import DirectoryTree
 MAX_FILE_COUNT = 50
 
 
-def make_valid_string(string: str):
+def make_valid_string(string: str) -> str:
+    """
+    Replace invalid characters in the string with underscores.
+
+    Args:
+    string: The input string.
+
+    Returns:
+    str: The valid string after replacing invalid characters.
+    """
     pattern = r"[^\w./-]+"
     return re.sub(pattern, "_", string)
 
@@ -41,7 +50,20 @@ def make_valid_string(string: str):
 # Therefore, we can remove this function.
 
 
-def get_gitlab_token(client_id: str, client_secret: str):
+def get_gitlab_token(client_id: str, client_secret: str) -> str:
+    """
+    Get the GitLab access token using the client ID and client secret.
+
+    Args:
+    client_id: The client ID.
+    client_secret: The client secret.
+
+    Returns:
+    str: The GitLab access token.
+
+    Raises:
+    Exception: If failed to get the access token.
+    """
     data = {
         'grant_type': 'client_credentials',
         'client_id': client_id,
@@ -67,11 +89,34 @@ def get_gitlab_token(client_id: str, client_secret: str):
 import gitlab
 
 def get_gitlab_client(access_token: str) -> gitlab.Gitlab:
+    """
+    Create a GitLab client using the access token.
+
+    Args:
+    access_token: The GitLab access token.
+
+    Returns:
+    gitlab.Gitlab: The GitLab client.
+    """
     gl = gitlab.Gitlab('https://gitlab.com', private_token=access_token)
     return gl
 
 
 def get_project_id_from_gitlab(gitlab_instance: gitlab.Gitlab, namespace: str, project_name: str) -> int:
+    """
+    Get the project ID from GitLab using the GitLab instance, namespace, and project name.
+
+    Args:
+    gitlab_instance: The GitLab instance.
+    namespace: The namespace of the project.
+    project_name: The name of the project.
+
+    Returns:
+    int: The project ID.
+
+    Raises:
+    Exception: If failed to get the project ID.
+    """
     try:
         project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
         return project.id
@@ -191,7 +236,7 @@ class ClonedRepo:
         except:
             pass
 
-    def list_directory_tree(
+    def list_directory_tree(root_directory: str, included_directories=None, excluded_directories: list[str] = None, included_files=None, ctags: CTags = None):
         self,
         included_directories=None,
         excluded_directories: list[str] = None,
@@ -216,7 +261,7 @@ class ClonedRepo:
         else:
             excluded_directories.append(".git")
 
-        def list_directory_contents(
+        def list_directory_contents(current_directory: str, indentation: str = '', ctags: CTags = None):
             current_directory,
             indentation="",
             ctags: CTags = None,
