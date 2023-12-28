@@ -56,7 +56,7 @@ def get_gitlab_token(client_id: str, client_secret: str):
     return response.json()['access_token']
             time.sleep(timeout)
     raise Exception(
-        "Could not get token, please double check your PRIVATE_KEY and GITHUB_APP_ID in the .env file. Make sure to restart uvicorn after."
+        "Could not get token, please double check your PRIVATE_KEY and GITLAB_APP_ID in the .env file. Make sure to restart uvicorn after."
     )
 
 
