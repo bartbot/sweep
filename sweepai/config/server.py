@@ -9,16 +9,10 @@ logger.print = logger.info
 
 load_dotenv(dotenv_path=".env")
 
-os.environ["GITHUB_APP_PEM"] = os.environ.get("GITHUB_APP_PEM") or base64.b64decode(
-    os.environ.get("GITHUB_APP_PEM_BASE64", "")
-).decode("utf-8")
+os.environ["GITLAB_APP_PEM"] = os.environ.get("GITLAB_APP_PEM", "<your GitLab app PEM>")
 
 if os.environ["GITHUB_APP_PEM"]:
-    os.environ["GITHUB_APP_ID"] = (
-        (os.environ.get("GITHUB_APP_ID") or os.environ.get("APP_ID"))
-        .replace("\\n", "\n")
-        .strip('"')
-    )
+    os.environ["GITLAB_APP_ID"] = os.environ.get("GITLAB_APP_ID", "<your GitLab app ID>").strip('"')
 
 os.environ["TRANSFORMERS_CACHE"] = os.environ.get(
     "TRANSFORMERS_CACHE", "/tmp/cache/model"
@@ -59,10 +53,10 @@ DISCORD_STATUS_WEBHOOK_URL = os.environ.get("DISCORD_STATUS_WEBHOOK_URL")
 
 # goes under Modal 'gitlab_oauth' secret name
 GITLAB_APP_ID = os.environ.get("GITLAB_APP_ID", os.environ.get("APP_ID"))
-GITLAB_APP_SECRET = os.environ.get("GITLAB_APP_SECRET")
+GITLAB_APP_SECRET = os.environ.get("GITLAB_APP_SECRET", "<your GitLab app secret>")
 if not GITLAB_APP_SECRET:
     raise ValueError("GitLab App Secret not found in environment variables.")
-GITLAB_REDIRECT_URI = os.environ.get("GITLAB_REDIRECT_URI")
+GITLAB_REDIRECT_URI = os.environ.get("GITLAB_REDIRECT_URI", "<your GitLab redirect URI>")
 if not GITLAB_REDIRECT_URI:
     raise ValueError("GitLab Redirect URI not found in environment variables.")
 # deprecated: old logic transfer so upstream can use this

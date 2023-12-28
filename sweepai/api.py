@@ -345,7 +345,7 @@ def progress(tracking_id: str = Path(...)):
                         repo.create_label(
                             name=GITLAB_LABEL_NAME,
                             color=GITLAB_LABEL_COLOR,
-                            description=GITLAB_LABEL_DESCRIPTION,
+                            description=GITLAB_LABEL_DESCRIPTION
                         )
                     current_issue = repo.get_issue(number=request.issue.number)
                     current_issue.add_to_labels(GITLAB_LABEL_NAME)
