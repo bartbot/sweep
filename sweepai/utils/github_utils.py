@@ -76,10 +76,9 @@ def get_project_id_from_gitlab(gitlab_instance: gitlab.Gitlab, namespace: str, p
         project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
         return project.id
     except gitlab.exceptions.GitlabGetError as e:
-        raise Exception('Failed to get project ID: {str(e)}')
+        logger.exception(f'Failed to get project ID: {str(e)}')
     except Exception as e:
-        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
-        raise Exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+        logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
 
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
@@ -98,12 +97,15 @@ class ClonedRepo:
         gitlab_instance = get_gitlab_client(self.token)
         namespace, project_name = self.repo_full_name.split('/')
         project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
-        return os.path.join(
-            REPO_CACHE_BASE_DIR,
-            str(project_id),
-            "base",
-            parse_collection_name(self.branch),
-        )
+        try:
+            return os.path.join(
+                REPO_CACHE_BASE_DIR,
+                str(project_id),
+                "base",
+                parse_collection_name(self.branch),
+            )
+        except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     @cached_property
     def zip_path(self):
@@ -111,6 +113,9 @@ class ClonedRepo:
         shutil.make_archive(self.repo_dir, "zip", self.repo_dir)
         logger.info("Done zipping")
         return f"{self.repo_dir}.zip"
+        except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     @cached_property
     def repo_dir(self):
@@ -123,10 +128,13 @@ class ClonedRepo:
             if not self.repo
             else self.repo
         )
-        self.branch = self.branch or SweepConfig.get_branch(self.repo)
+
         curr_time_str = str(time.time()).encode("utf-8")
         hash_obj = hashlib.sha256(curr_time_str)
         hash_hex = hash_obj.hexdigest()
+        except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
         if self.branch:
             return os.path.join(
                 REPO_CACHE_BASE_DIR,
@@ -147,6 +155,9 @@ class ClonedRepo:
         namespace, project_name = self.repo_full_name.split('/')
         project_id = get_project_id_from_gitlab(gitlab_instance, namespace, project_name)
         return project.http_url_to_repo
+        except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
@@ -155,6 +166,8 @@ class ClonedRepo:
                 repo = git.Repo.clone_from(
                     self.clone_url, self.cached_dir, branch=self.branch
                 )
+                except Exception as e:
+                    logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
             else:
                 repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
             logger.info("Done cloning")
@@ -162,10 +175,13 @@ class ClonedRepo:
             try:
                 repo = git.Repo(self.cached_dir)
                 repo.remotes.origin.pull()
-            except Exception:
+            except Exception as e:
+                logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
                 logger.error("Could not pull repo")
                 shutil.rmtree(self.cached_dir, ignore_errors=True)
                 repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
+                except Exception as e:
+                    logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
             logger.info("Repo already cached, copying")
         logger.info("Copying repo...")
         shutil.copytree(
@@ -188,8 +204,9 @@ class ClonedRepo:
         try:
             shutil.rmtree(self.repo_dir)
             os.remove(self.zip_path)
-        except:
-            pass
+        except Exception as e:
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
+            logger.exception(f'An unexpected error occurred while fetching project ID: {str(e)}')
 
     def list_directory_tree(
         self,
