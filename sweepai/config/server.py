@@ -9,16 +9,9 @@ logger.print = logger.info
 
 load_dotenv(dotenv_path=".env")
 
-os.environ["GITHUB_APP_PEM"] = os.environ.get("GITHUB_APP_PEM") or base64.b64decode(
-    os.environ.get("GITHUB_APP_PEM_BASE64", "")
+os.environ["GITLAB_APP_SECRET"] = os.environ.get("GITLAB_APP_SECRET") or base64.b64decode(
+    os.environ.get("GITLAB_APP_SECRET_BASE64", "")
 ).decode("utf-8")
-
-if os.environ["GITHUB_APP_PEM"]:
-    os.environ["GITHUB_APP_ID"] = (
-        (os.environ.get("GITHUB_APP_ID") or os.environ.get("APP_ID"))
-        .replace("\\n", "\n")
-        .strip('"')
-    )
 
 os.environ["TRANSFORMERS_CACHE"] = os.environ.get(
     "TRANSFORMERS_CACHE", "/tmp/cache/model"
@@ -66,25 +59,26 @@ GITLAB_REDIRECT_URI = os.environ.get("GITLAB_REDIRECT_URI")
 if not GITLAB_REDIRECT_URI:
     raise ValueError("GitLab Redirect URI not found in environment variables.")
 # deprecated: old logic transfer so upstream can use this
+# Default GitLab App IDs based on environment
 if GITLAB_APP_ID is None:
     if ENV == "prod":
-        GITLAB_APP_ID = "<your GitLab app ID for prod>"
+        GITLAB_APP_ID = os.environ.get("GITLAB_APP_ID", "<your GitLab app ID for prod>")
     elif ENV == "dev":
-        GITLAB_APP_ID = "<your GitLab app ID for dev>"
+        GITLAB_APP_ID = os.environ.get("GITLAB_APP_ID", "<your GitLab app ID for dev>")
     elif ENV == "staging":
-        GITLAB_APP_ID = "<your GitLab app ID for staging>"
+        GITLAB_APP_ID = os.environ.get("GITLAB_APP_ID", "<your GitLab app ID for staging>")
 GITHUB_BOT_USERNAME = os.environ.get("GITHUB_BOT_USERNAME")
 
 # deprecated: left to support old logic
-if not GITHUB_BOT_USERNAME:
+# Set GitLab Bot Username based on environment
+GITLAB_BOT_USERNAME = os.environ.get("GITLAB_BOT_USERNAME")
+if not GITLAB_BOT_USERNAME:
     if ENV == "prod":
-        GITHUB_BOT_USERNAME = "sweep-ai[bot]"
+        GITLAB_BOT_USERNAME = "<your GitLab bot username for prod>"
     elif ENV == "dev":
-        GITHUB_BOT_USERNAME = "sweep-nightly[bot]"
+        GITLAB_BOT_USERNAME = "<your GitLab bot username for dev>"
     elif ENV == "staging":
-        GITHUB_BOT_USERNAME = "sweep-canary[bot]"
-elif not GITHUB_BOT_USERNAME.endswith("[bot]"):
-    GITHUB_BOT_USERNAME = GITHUB_BOT_USERNAME + "[bot]"
+        GITLAB_BOT_USERNAME = "<your GitLab bot username for staging>"
 
 GITLAB_LABEL_NAME = os.environ.get("GITLAB_LABEL_NAME", "sweep")
 GITLAB_LABEL_COLOR = os.environ.get("GITLAB_LABEL_COLOR", "9400D3")
@@ -92,10 +86,7 @@ GITLAB_LABEL_DESCRIPTION = os.environ.get(
     "GITLAB_LABEL_DESCRIPTION", "Sweep your software chores"
 )
 GITHUB_APP_PEM = os.environ.get("GITHUB_APP_PEM")
-GITHUB_APP_PEM = GITHUB_APP_PEM or os.environ.get("PRIVATE_KEY")
-if GITHUB_APP_PEM is not None:
-    GITHUB_APP_PEM = GITHUB_APP_PEM.strip(' \n"')  # Remove whitespace and quotes
-    GITHUB_APP_PEM = GITHUB_APP_PEM.replace("\\n", "\n")
+
 
 GITLAB_CONFIG_BRANCH = os.environ.get("GITLAB_CONFIG_BRANCH", "sweep/add-sweep-config")
 GITLAB_DEFAULT_CONFIG = os.environ.get(
@@ -230,7 +221,8 @@ if isinstance(MULTI_REGION_CONFIG, str):
 WHITELISTED_USERS = os.environ.get("WHITELISTED_USERS", None)
 if WHITELISTED_USERS:
     WHITELISTED_USERS = WHITELISTED_USERS.split(",")
-    WHITELISTED_USERS.append(GITHUB_BOT_USERNAME)
+    # Append the GitLab bot username to the list of whitelisted users
+WHITELISTED_USERS.append(GITLAB_BOT_USERNAME)
 
 DEFAULT_GPT4_32K_MODEL = os.environ.get("DEFAULT_GPT4_32K_MODEL", "gpt-4-1106-preview")
 DEFAULT_GPT35_MODEL = os.environ.get("DEFAULT_GPT35_MODEL", "gpt-3.5-turbo-1106")
