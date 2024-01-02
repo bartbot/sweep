@@ -41,11 +41,11 @@ def make_valid_string(string: str):
 # Therefore, we can remove this function.
 
 
-def get_gitlab_token(client_id: str, client_secret: str):
+def get_gitlab_token(GITLAB_APP_ID: str, GITLAB_APP_SECRET: str):
     data = {
         'grant_type': 'client_credentials',
-        'client_id': client_id,
-        'client_secret': client_secret
+        'client_id': GITLAB_APP_ID,
+        'client_secret': GITLAB_APP_SECRET
     }
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -56,7 +56,7 @@ def get_gitlab_token(client_id: str, client_secret: str):
     return response.json()['access_token']
             time.sleep(timeout)
     raise Exception(
-        "Could not get token, please double check your PRIVATE_KEY and GITLAB_APP_ID in the .env file. Make sure to restart uvicorn after."
+        "Could not get token, please double check your GITLAB_APP_SECRET and GITLAB_APP_ID in the .env file. Make sure to restart uvicorn after."
     )
 
 
