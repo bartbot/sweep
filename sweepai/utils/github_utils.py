@@ -12,6 +12,7 @@ from functools import cached_property
 from typing import Any
 
 import git
+import gitlab
 import rapidfuzz
 import requests
 from github import Github
