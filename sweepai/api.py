@@ -6,6 +6,7 @@ import json
 import threading
 import time
 
+import gitlab
 import requests
 from fastapi import FastAPI, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse
@@ -20,7 +21,8 @@ from sweepai.config.client import (DEFAULT_RULES, RESTART_SWEEP_BUTTON,
                                    get_documentation_dict, get_rules)
 from sweepai.config.server import (DISCORD_FEEDBACK_WEBHOOK_URL,
                                    GITLAB_BOT_USERNAME, GITLAB_LABEL_COLOR,
-                                   GITLAB_LABEL_DESCRIPTION, GITLAB_LABEL_NAME)
+                                   GITLAB_LABEL_DESCRIPTION, GITLAB_LABEL_NAME,
+                                   GITLAB_APP_ID, GITLAB_APP_SECRET)
 from sweepai.core.documentation import write_documentation
 from sweepai.core.entities import PRChangeRequest
 from sweepai.core.vector_db import get_deeplake_vs_from_repo
@@ -209,8 +211,12 @@ def redirect_to_health():
     return health.health_check()
 
 
+# Create a GitLab object
+gl = gitlab.Gitlab('https://gitlab.com', private_token=GITLAB_APP_SECRET)
 
-
+# Create a new project hook
+project = gl.projects.get(GITLAB_APP_ID)
+hook = project.hooks.create({'url': 'http://example.com/webhook', 'push_events': 1, 'issues_events': 1, 'merge_requests_events': 1})
 
 @app.post("/webhook/gitlab/issue")
 async def handle_gitlab_issue_webhook(raw_request: Request):
