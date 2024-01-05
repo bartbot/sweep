@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Any
 
+# External libraries
 import git
+import gitlab
 import rapidfuzz
 import requests
 from github import Github
@@ -21,12 +23,14 @@ from redis.backoff import ExponentialBackoff
 from redis.exceptions import BusyLoadingError, ConnectionError, TimeoutError
 from redis.retry import Retry
 
+# Internal project imports
 from sweepai.config.client import SweepConfig
 from sweepai.config.server import GITHUB_APP_ID, GITHUB_APP_PEM, REDIS_URL
 from sweepai.logn import logger
 from sweepai.utils.ctags import CTags
 from sweepai.utils.ctags_chunker import get_ctags_for_file
 from sweepai.utils.tree_utils import DirectoryTree
+
 
 MAX_FILE_COUNT = 50
 
@@ -42,6 +46,18 @@ def make_valid_string(string: str):
 
 
 def get_gitlab_token(client_id: str, client_secret: str):
+    """Retrieve a GitLab access token using client credentials.
+
+    Args:
+        client_id (str): The GitLab application client ID.
+        client_secret (str): The GitLab application client secret.
+
+    Returns:
+        str: The access token for GitLab.
+
+    Raises:
+        Exception: If the request for an access token fails.
+    """
     data = {
         'grant_type': 'client_credentials',
         'client_id': client_id,
@@ -60,18 +76,27 @@ def get_gitlab_token(client_id: str, client_secret: str):
     )
 
 
-# GitLab has a Python package named 'python-gitlab' for interacting with the GitLab API.
-# We will use this package to create a GitLab client.
-# First, install the package using pip: pip install python-gitlab
 
-import gitlab
 
 def get_gitlab_client(access_token: str) -> gitlab.Gitlab:
-    gl = gitlab.Gitlab('https://gitlab.com', private_token=access_token)
-    return gl
+    gitlab_client = gitlab.Gitlab('https://gitlab.com', private_token=access_token)
+    return gitlab_client
 
 
-def get_project_id_from_gitlab(gitlab_instance: gitlab.Gitlab, namespace: str, project_name: str) -> int:
+def get_project_id_from_gitlab(gitlab_client: gitlab.Gitlab, namespace: str, project_name: str) -> int:
+    """Fetch the project ID from GitLab using the project's namespace and name.
+
+    Args:
+        gitlab_client (gitlab.Gitlab): The GitLab client instance.
+        namespace (str): The namespace of the GitLab project (owner or group).
+        project_name (str): The name of the GitLab project.
+
+    Returns:
+        int: The project ID.
+
+    Raises:
+        Exception: If the project ID cannot be retrieved.
+    """
     try:
         project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
         return project.id
@@ -177,9 +202,12 @@ class ClonedRepo:
 
     def __post_init__(self):
         subprocess.run(["git", "config", "--global", "http.postBuffer", "524288000"])
-        gitlab_instance = get_gitlab_client(self.token)
+        gitlab_client = get_gitlab_client(self.token)
         namespace, project_name = self.repo_full_name.split('/')
-        self.project = gitlab_instance.projects.get(f'{namespace}/{project_name}')
+        try:
+            self.project = gitlab_client.projects.get(f'{namespace}/{project_name}')
+        except Exception as e:
+            raise RuntimeError(f'Error accessing GitLab project: {e}')
         self.commit_hash = next(self.project.commits.list(as_list=False)).id
         self.git_repo = self.clone()
         self.branch = self.branch or self.project.default_branch
@@ -332,7 +360,11 @@ class ClonedRepo:
 
     def get_num_files_from_repo(self):
         # subprocess.run(["git", "config", "--global", "http.postBuffer", "524288000"])
-        self.git_repo.git.checkout(self.branch)
+        try:
+            self.git_repo.git.checkout(self.branch)
+        except Exception as e:
+            raise RuntimeError(f'Error checking out branch {self.branch}: {e}')
+        
         file_list = self.get_file_list()
         return len(file_list)
 
