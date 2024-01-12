@@ -125,6 +125,8 @@ class ClonedRepo:
 
     class Config:
         arbitrary_types_allowed = True
+    
+    ssh_url_to_repo: str | None = None
 
     @cached_property
     def cached_dir(self):
@@ -171,20 +173,17 @@ class ClonedRepo:
 
     @property
     def clone_url(self):
-        return (
-            f"https://x-access-token:{self.token}@github.com/{self.repo_full_name}.git"
-        )
+        return self.ssh_url_to_repo
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
-            logger.info("Cloning repo...")
+            logger.info("Cloning repo using git command...")
+            clone_cmd = ['git', 'clone', self.clone_url, self.cached_dir]
             if self.branch:
-                repo = git.Repo.clone_from(
-                    self.clone_url, self.cached_dir, branch=self.branch
-                )
-            else:
-                repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
+                clone_cmd.extend(['--branch', self.branch])
+            subprocess.run(clone_cmd, check=True)
             logger.info("Done cloning")
+            repo = git.Repo(self.cached_dir)
         else:
             try:
                 repo = git.Repo(self.cached_dir)
@@ -210,7 +209,10 @@ class ClonedRepo:
             if not self.repo
             else self.repo
         )
-        self.commit_hash = self.repo.get_commits()[0].sha
+        self.ssh_url_to_repo = f'git@github.com:{self.repo_full_name}.git'
+        # Get the commit hash of the latest commit in the repository using the git command
+        subprocess.run(['git', 'clone', self.ssh_url_to_repo, self.cached_dir], check=True)
+        self.commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=self.cached_dir).decode('utf-8').strip()
         self.git_repo = self.clone()
         self.branch = self.branch or SweepConfig.get_branch(self.repo)
 
