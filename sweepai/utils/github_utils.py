@@ -141,7 +141,7 @@ class ClonedRepo:
             parse_collection_name(self.branch),
         )
 
-    @cached_property
+    @property
     def zip_path(self):
         logger.info("Zipping repository...")
         shutil.make_archive(self.repo_dir, "zip", self.repo_dir)
@@ -179,7 +179,7 @@ class ClonedRepo:
         if not os.path.exists(self.cached_dir):
             logger.info("Cloning repo...")
             if self.branch:
-                repo = git.Repo.clone_from(
+                repo = subprocess.run(
                     self.clone_url, self.cached_dir, branch=self.branch
                 )
             else:
