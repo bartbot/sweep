@@ -436,6 +436,7 @@ class ClonedRepo:
         return all_files[:limit]
 
 
+# This class is specific to GitHub. For the corresponding mock class for GitLab, see `gitlab_utils.py`.
 @dataclass
 class MockClonedRepo(ClonedRepo):
     _repo_dir: str = ""
