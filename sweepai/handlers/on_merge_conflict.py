@@ -13,6 +13,7 @@ from sweepai.handlers.create_pr import create_pr_changes
 from sweepai.handlers.on_ticket import get_branch_diff_text, sweeping_gif
 from sweepai.utils.chat_logger import ChatLogger, discord_log_error
 from sweepai.utils.diff import generate_diff
+from sweepai.utils.event_logger import posthog
 from sweepai.utils.github_utils import ClonedRepo, get_github_client
 from sweepai.utils.progress import (
     PaymentContext,
@@ -82,6 +83,8 @@ def on_merge_conflict(
         nonlocal comment
         comment.edit(header + "\n\n" + body)
 
+    metadata = {}
+
     try:
         cloned_repo = ClonedRepo(
             repo_full_name=repo_full_name,
@@ -89,7 +92,6 @@ def on_merge_conflict(
             branch=branch,
             token=token,
         )
-        metadata = {}
         start_time = time.time()
 
         request = f"Sweep: Resolve merge conflicts for PR #{pr_number}: {pr.title}"
@@ -140,6 +142,17 @@ def on_merge_conflict(
                 ),
             ),
         )
+        metadata = {
+            "tracking_id": tracking_id,
+            "username": username,
+            "function": "on_merge_conflict",
+            **ticket_progress.context.dict(),
+        }
+        posthog.capture(
+            username,
+            "started",
+            properties=metadata,
+        )
         issue_url = pr.html_url
 
         edit_comment("Configuring branch...")
@@ -180,7 +193,7 @@ def on_merge_conflict(
 
         git_repo.git.add(update=True)
         # -m and message are needed otherwise exception is thrown
-        git_repo.git.commit("-m", "commit with merge conflict")
+        git_repo.git.commit("-m", "Start of Merge Conflict Resolution")
 
         origin = git_repo.remotes.origin
         new_url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
@@ -327,7 +340,11 @@ def on_merge_conflict(
         ticket_progress.context.done_time = time.time()
         ticket_progress.save()
         edit_comment(f"✨ **Created Pull Request:** {github_pull_request.html_url}")
-
+        posthog.capture(
+            username,
+            "success",
+            properties=metadata,
+        )
         return {"success": True}
     except Exception as e:
         print(f"Exception occured: {e}")
@@ -341,6 +358,11 @@ def on_merge_conflict(
             + str(e)
             + "\n\n"
             + f"tracking ID: {tracking_id}"
+        )
+        posthog.capture(
+            username,
+            "failed",
+            properties=metadata,
         )
         return {"success": False}
 

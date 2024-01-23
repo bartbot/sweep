@@ -10,6 +10,7 @@ from sweepai.core.sweep_bot import SweepBot
 from sweepai.handlers.create_pr import create_pr_changes
 from sweepai.handlers.on_ticket import get_branch_diff_text, sweeping_gif
 from sweepai.utils.chat_logger import ChatLogger, discord_log_error
+from sweepai.utils.event_logger import posthog
 from sweepai.utils.github_utils import ClonedRepo, get_github_client
 from sweepai.utils.progress import TicketContext, TicketProgress, TicketProgressStatus
 from sweepai.utils.prompt_constructor import HumanMessagePrompt
@@ -24,6 +25,7 @@ def stack_pr(
     repo_full_name: str,
     installation_id: int,
     tracking_id: str,
+    commit_hash: str = None,
 ):
     token, g = get_github_client(installation_id=installation_id)
     repo = g.get_repo(repo_full_name)
@@ -56,6 +58,7 @@ def stack_pr(
     )
     header = f"{status_message}\n---\n\nI'm currently fixing this PR to address the following:\n\n{blockquote(request)}"
     comment = pr.create_issue_comment(body=header)
+    metadata = {}
 
     def edit_comment(body):
         nonlocal comment
@@ -68,12 +71,11 @@ def stack_pr(
             token=token,
             branch=branch,
         )
-        metadata = {}
         start_time = time.time()
 
         title = request
-        if len(title) > 50:
-            title = title[:50] + "..."
+        if len(title) > 150:
+            title = title[:150] + "..."
         ticket_progress = TicketProgress(
             tracking_id=tracking_id,
             username=username,
@@ -86,6 +88,18 @@ def stack_pr(
                 is_public=repo.private is False,
                 start_time=time.time(),
             ),
+        )
+
+        metadata = {
+            "tracking_id": tracking_id,
+            "username": username,
+            "function": "stack_pr",
+            **ticket_progress.context.dict(),
+        }
+        posthog.capture(
+            username,
+            "started",
+            properties=metadata,
         )
 
         chat_logger = ChatLogger(
@@ -193,6 +207,10 @@ def stack_pr(
             diff_text,
             pull_request.title,
         )
+        new_description = (
+            f"This pull request was created to fix GitHub Actions on [{commit_hash[:7]}](https://github.com/{repo_full_name}/commit/{commit_hash}).\n\n"
+            + new_description
+        )
         pull_request.content = new_description
         github_pull_request = repo.create_pull(
             title=pull_request.title,
@@ -205,6 +223,11 @@ def stack_pr(
         ticket_progress.context.done_time = time.time()
         ticket_progress.save()
         edit_comment(f"✨ **Created Pull Request:** {github_pull_request.html_url}")
+        posthog.capture(
+            username,
+            "success",
+            properties=metadata,
+        )
         return {"success": True}
     except Exception as e:
         edit_comment(
@@ -216,6 +239,11 @@ def stack_pr(
             + str(e)
             + "\n\n"
             + f"tracking ID: {tracking_id}"
+        )
+        posthog.capture(
+            username,
+            "failed",
+            properties=metadata,
         )
         return {"success": False}
 

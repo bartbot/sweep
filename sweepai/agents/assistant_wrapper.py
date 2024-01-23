@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+import traceback
 from pathlib import Path
 from typing import Callable
 
@@ -192,6 +193,7 @@ def run_until_complete(
     message_strings = []
     json_messages = []
     try:
+        num_tool_calls_made = 0
         for i in range(max_iterations):
             run = openai_retry_with_timeout(
                 client.beta.threads.runs.retrieve,
@@ -207,6 +209,11 @@ def run_until_complete(
                     f"Run failed assistant_id={assistant_id}, run_id={run_id}, thread_id={thread_id}"
                 )
             elif run.status == "requires_action":
+                num_tool_calls_made += 1
+                if num_tool_calls_made > 15 and model.startswith("gpt-3.5"):
+                    raise AssistantRaisedException(
+                        "Too many tool calls made on GPT 3.5."
+                    )
                 tool_calls = [
                     tool_call
                     for tool_call in run.required_action.submit_tool_outputs.tool_calls
@@ -342,12 +349,13 @@ def openai_assistant_call_helper(
     thread = client.beta.threads.create()
     if file_ids:
         logger.info("Uploading files...")
-    client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=request,
-        file_ids=file_ids,
-    )
+    if request:
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=request,
+            file_ids=file_ids,
+        )
     if file_ids:
         logger.info("Files uploaded")
     for message in additional_messages:
@@ -408,6 +416,11 @@ def openai_assistant_call(
         {
             "query": request,
             "model": model,
+            "username": chat_logger.data.get("username", "anonymous")
+            if chat_logger is not None
+            else "anonymous",
+            "is_self_hosted": IS_SELF_HOSTED,
+            "trace": "".join(traceback.format_list(traceback.extract_stack())),
         },
     )
     retries = range(3)
