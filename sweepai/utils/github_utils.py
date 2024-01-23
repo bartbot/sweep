@@ -12,6 +12,7 @@ from functools import cached_property
 from typing import Any
 
 import git
+import gitlab
 import rapidfuzz
 import requests
 from github import Github
@@ -114,6 +115,8 @@ def get_installation_id(username: str) -> str:
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
 
 
+# This class is specific to GitHub. For GitLab, see ClonedRepoGitlab in gitlab_utils.py.
+# For corresponding operations in GitLab, refer to the ClonedRepoGitlab class in gitlab_utils.py
 @dataclass
 class ClonedRepo:
     repo_full_name: str
@@ -349,6 +352,7 @@ class ClonedRepo:
         )
         return tree, dir_obj
 
+    # For GitLab, use get_file_contents from ClonedRepoGitlab in gitlab_utils.py
     def get_file_contents(self, file_path, ref=None):
         local_path = (
             f"{self.repo_dir}{file_path}"
@@ -368,6 +372,7 @@ class ClonedRepo:
         file_list = self.get_file_list()
         return len(file_list)
 
+    # To get the commit history from a GitLab repository, use ClonedRepoGitlab.get_commit_history in gitlab_utils.py
     def get_commit_history(
         self, username: str = "", limit: int = 200, time_limited: bool = True
     ):
