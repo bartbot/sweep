@@ -296,16 +296,17 @@ async def handle_request(request_dict, event=None):
                                             for status in latest_commit.get_statuses()
                                         ]
                                     ):  # base branch is passing
-                                        logs = download_logs(
+                                        logs, detailed_failure_info = download_logs(
                                             request.repository.full_name,
                                             request.check_run.run_id,
                                             request.installation.id,
+                                            detailed=True
                                         )
-                                        logs, user_message = clean_logs(logs)
+                                        logs, user_message = clean_logs(logs, detailed_failure_info)
                                         commit_author = request.sender.login
                                         tracking_id = get_hash()
                                         stack_pr(
-                                            request=f"[Sweep GHA Fix] The GitHub Actions run failed with the following error logs:\n\n```\n\n{logs}\n\n```",
+                                            request=f"[Sweep GHA Fix] The GitHub Actions run failed with the following error logs:\n\n```\n\n{logs}\n\n```\n\nHere are some suggestions to help you address the failure:\n- Review the detailed error information provided above.\n- Check our [documentation](https://docs.sweepai.com/github-actions-fixes) for common fixes.\n- Ensure all dependencies are correctly installed and up-to-date.\n\nIf you continue to experience issues, please consult the [GitHub Actions documentation](https://docs.github.com/en/actions) or reach out to our support team.\n\nTracking ID: {tracking_id}",
                                             pr_number=pr.number,
                                             username=commit_author,
                                             repo_full_name=repo.full_name,
