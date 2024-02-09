@@ -296,16 +296,17 @@ async def handle_request(request_dict, event=None):
                                             for status in latest_commit.get_statuses()
                                         ]
                                     ):  # base branch is passing
-                                        logs = download_logs(
+                                        logs, detailed_failure_info = download_logs(
                                             request.repository.full_name,
                                             request.check_run.run_id,
                                             request.installation.id,
+                                            detailed=True
                                         )
-                                        logs, user_message = clean_logs(logs)
+                                        logs, user_message = clean_logs(logs, detailed_failure_info, include_potential_causes=True)
                                         commit_author = request.sender.login
                                         tracking_id = get_hash()
                                         stack_pr(
-                                            request=f"[Sweep GHA Fix] The GitHub Actions run failed with the following error logs:\n\n```\n\n{logs}\n\n```",
+                                            request=f"[Sweep GHA Fix] The GitHub Actions run failed with the following error logs:\n\n```\n\n{logs}\n\n```\n\nHere are some suggestions to help you address the failure:\n- Review the detailed error information provided above.\n- Check our [documentation](https://docs.sweepai.com/github-actions-fixes) for common fixes.\n- Ensure all dependencies are correctly installed and up-to-date.\n\nIf you continue to experience issues, please consult the [GitHub Actions documentation](https://docs.github.com/en/actions) or reach out to our support team.\n\nTracking ID: {tracking_id}",
                                             pr_number=pr.number,
                                             username=commit_author,
                                             repo_full_name=repo.full_name,
@@ -328,18 +329,21 @@ async def handle_request(request_dict, event=None):
                                     data={
                                         "username": commit_author,
                                         "title": "[Sweep GHA Fix] Fix the failing GitHub Actions",
+                                        "summary": f"A summary of the failure: {user_message}",
+                                        "tracking_id": tracking_id
                                     }
                                 )
                                 make_pr(
                                     title="[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     repo_description=repo.description,
-                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```",
+                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```
+\nFor a detailed analysis and potential fixes, please review the GitHub Actions run linked here: [GitHub Actions Run](https://github.com/{request_dict["repository"]["full_name"]}/actions/runs/{tracking_id}).\n\nSuggestions for potential fixes include:\n- Ensuring all dependencies are correctly installed and up-to-date.\n- Reviewing the changes made in recent commits that could affect the workflow.\n- Consulting the [GitHub Actions documentation](https://docs.github.com/en/actions) for further insights.",
                                     repo_full_name=request_dict["repository"][
                                         "full_name"
                                     ],
                                     installation_id=request_dict["installation"]["id"],
                                     user_token=None,
-                                    use_faster_model=chat_logger.use_faster_model(),
+                                    use_faster_model=detailed_failure_info['complex_failure_analysis'],
                                     username=commit_author,
                                     chat_logger=chat_logger,
                                 )
