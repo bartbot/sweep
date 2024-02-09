@@ -399,6 +399,8 @@ def add_config_to_top_repos(installation_id, username, repositories, max_repos=3
     logger.print("Finished creating configs for top repos")
 
 
+from sweepai.utils.gha_log_parser import extract_error_logs
+
 def create_gha_pr(g, repo):
     # Create a new branch
     branch_name = "sweep/gha-enable"
@@ -421,12 +423,21 @@ def create_gha_pr(g, repo):
     )
 
     # Create a PR from this branch to the main branch
-    pr = repo.create_pull(
-        title="Enable GitHub Actions",
-        body="This PR enables GitHub Actions for this repository.",
-        head=branch_name,
-        base=repo.default_branch,
-    )
+    try:
+        pr = repo.create_pull(
+            title="Enable GitHub Actions",
+            body="This PR enables GitHub Actions for this repository.",
+            head=branch_name,
+            base=repo.default_branch,
+        )
+    except Exception as e:
+        error_logs = extract_error_logs(str(e))
+        if error_logs:
+            pr_body = "This PR enables GitHub Actions for this repository.\n\nGitHub Actions failed with the following errors:\n" + "\n".join(error_logs)
+        else:
+            pr_body = "This PR enables GitHub Actions for this repository.\n\nGitHub Actions failed due to an unexpected error."
+        pr = repo.create_pull(title="Enable GitHub Actions", body=pr_body, head=branch_name, base=repo.default_branch)
+        logger.error(pr_body)
     return pr
 
 
