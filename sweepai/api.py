@@ -330,7 +330,8 @@ async def handle_request(request_dict, event=None):
                                         "title": "[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     }
                                 )
-                                make_pr(
+                                try:
+                                    make_pr(
                                     title="[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     repo_description=repo.description,
                                     summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```",
