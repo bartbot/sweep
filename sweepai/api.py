@@ -290,12 +290,12 @@ async def handle_request(request_dict, event=None):
                                     commits = repo.get_commits(sha=pr.base.ref)
                                     latest_commit: Commit = commits[0]
                                     if all(
-                                        status != "failure"
+                                        status not in ["failure", "error", "cancelled"]
                                         for status in [
                                             status.state
                                             for status in latest_commit.get_statuses()
                                         ]
-                                    ):  # base branch is passing
+                                    ):  # base branch is not in a failing state
                                         logs = download_logs(
                                             request.repository.full_name,
                                             request.check_run.run_id,
