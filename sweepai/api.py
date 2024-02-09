@@ -336,13 +336,14 @@ async def handle_request(request_dict, event=None):
                                 make_pr(
                                     title="[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     repo_description=repo.description,
-                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```",
+                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```
+\nFor a detailed analysis and potential fixes, please review the GitHub Actions run linked here: [GitHub Actions Run](https://github.com/{request_dict["repository"]["full_name"]}/actions/runs/{tracking_id}).\n\nSuggestions for potential fixes include:\n- Ensuring all dependencies are correctly installed and up-to-date.\n- Reviewing the changes made in recent commits that could affect the workflow.\n- Consulting the [GitHub Actions documentation](https://docs.github.com/en/actions) for further insights.",
                                     repo_full_name=request_dict["repository"][
                                         "full_name"
                                     ],
                                     installation_id=request_dict["installation"]["id"],
                                     user_token=None,
-                                    use_faster_model=chat_logger.use_faster_model(),
+                                    use_faster_model=detailed_failure_info['complex_failure_analysis'],
                                     username=commit_author,
                                     chat_logger=chat_logger,
                                 )
