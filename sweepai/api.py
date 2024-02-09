@@ -296,12 +296,13 @@ async def handle_request(request_dict, event=None):
                                             for status in latest_commit.get_statuses()
                                         ]
                                     ):  # base branch is passing
-                                        logs = download_logs(
+                                        logs, error_highlights = download_logs(
                                             request.repository.full_name,
                                             request.check_run.run_id,
                                             request.installation.id,
+                                            highlight_errors=True
                                         )
-                                        logs, user_message = clean_logs(logs)
+                                        logs, user_message = clean_logs(logs, error_highlights)
                                         commit_author = request.sender.login
                                         tracking_id = get_hash()
                                         stack_pr(
@@ -311,6 +312,7 @@ async def handle_request(request_dict, event=None):
                                             repo_full_name=repo.full_name,
                                             installation_id=request.installation.id,
                                             tracking_id=tracking_id,
+                                        )
                                         )
                         elif (
                             request.check_run.check_suite.head_branch
@@ -332,8 +334,11 @@ async def handle_request(request_dict, event=None):
                                 )
                                 make_pr(
                                     title="[Sweep GHA Fix] Fix the failing GitHub Actions",
+                                )
+                                make_pr(
+                                    title="[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     repo_description=repo.description,
-                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```",
+                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```\n\n{user_message}",
                                     repo_full_name=request_dict["repository"][
                                         "full_name"
                                     ],
