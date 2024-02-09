@@ -22,6 +22,7 @@ from tqdm import tqdm
 from yamllint import linter
 
 from sweepai.agents.pr_description_bot import PRDescriptionBot
+from sweepai.utils.github_actions_transition import update_workflow_file
 from sweepai.config.client import (
     DEFAULT_RULES,
     RESET_FILE,
@@ -428,6 +429,8 @@ def on_ticket(
 
             if initial_sandbox_response == -1:
                 sandbox_execution_message = ""
+            elif "deprecated" in initial_sandbox_response.message:
+                sandbox_execution_message += "\n\nThis failure seems to be due to the use of deprecated GitHub Actions commands. Consider using the `github_actions_transition.py` script with the `update_workflow_file` function to update the workflow files."
             elif initial_sandbox_response is not None:
                 repo = g.get_repo(repo_full_name)
                 commit_hash = repo.get_commits()[0].sha
