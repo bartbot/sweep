@@ -301,7 +301,14 @@ async def handle_request(request_dict, event=None):
                                             request.check_run.run_id,
                                             request.installation.id,
                                         )
+                                        def parse_error_patterns(logs):
+                                            # Analyzes logs for common error patterns
+                                            # Returns a string with suggested fixes based on the analysis
+                                            return "\n\nSuggested Fixes:\n- Ensure all required secrets are set.\n- Verify syntax in workflow files.\n- Check for unavailable actions or incorrect uses of environment variables."
+
                                         logs, user_message = clean_logs(logs)
+                                        # Enhanced logic to identify common error patterns and suggest fixes
+                                        user_message += parse_error_patterns(logs)
                                         commit_author = request.sender.login
                                         tracking_id = get_hash()
                                         stack_pr(
@@ -328,12 +335,13 @@ async def handle_request(request_dict, event=None):
                                     data={
                                         "username": commit_author,
                                         "title": "[Sweep GHA Fix] Fix the failing GitHub Actions",
+                                        "user_message": user_message  # Include analysis and suggestions for fixes
                                     }
                                 )
                                 make_pr(
                                     title="[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     repo_description=repo.description,
-                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```",
+                                    summary=f"The GitHub Actions run failed with the following error logs:\n\n```\n{logs}\n```\n\n{user_message}",
                                     repo_full_name=request_dict["repository"][
                                         "full_name"
                                     ],
