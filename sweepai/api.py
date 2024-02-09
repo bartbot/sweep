@@ -57,6 +57,7 @@ from sweepai.handlers.on_check_suite import (  # type: ignore
     on_check_suite,
 )
 from sweepai.handlers.on_comment import on_comment
+from sweepai.handlers.gha_log_handler import GHALogHandler
 from sweepai.handlers.on_merge import on_merge
 from sweepai.handlers.on_merge_conflict import on_merge_conflict
 from sweepai.handlers.on_ticket import on_ticket
@@ -200,6 +201,17 @@ def call_on_check_suite(*args, **kwargs):
     kwargs["request"].check_run.pull_requests[0].number
     thread = threading.Thread(target=run_on_check_suite, args=args, kwargs=kwargs)
     thread.start()
+
+    # Check for GitHub Action failure and handle logs
+    if kwargs["request"].check_run.conclusion == "failure":
+        try:
+            gha_log_handler = GHALogHandler(repo_full_name=kwargs["request"].repository.full_name, token='YOUR_TOKEN_HERE')
+            logs = gha_log_handler.fetch_logs(run_id=kwargs["request"].check_run.id)
+            errors = gha_log_handler.parse_logs(logs)
+            for error in errors:
+                logger.info(f'GHA Error: {error}')
+        except Exception as e:
+            logger.exception('Failed to handle GHA logs: ' + str(e))
 
 
 def call_on_comment(
