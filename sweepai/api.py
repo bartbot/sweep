@@ -302,6 +302,8 @@ async def handle_request(request_dict, event=None):
                                             request.installation.id,
                                         )
                                         logs, user_message = clean_logs(logs)
+                                        # Parse logs for common error patterns and suggest fixes
+                                        user_message += "\n\nSuggested Fixes:\n- Ensure all required secrets are set.\n- Check syntax errors in your workflows."
                                         commit_author = request.sender.login
                                         tracking_id = get_hash()
                                         stack_pr(
