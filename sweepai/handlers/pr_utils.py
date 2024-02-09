@@ -154,18 +154,22 @@ def make_pr(
         if rule
         else "I created this PR to fix the failing GitHub Actions."
     )
-    pr = repo.create_pull(
-        title=pr_changes.title,
-        body=pr_actions_message + rule_description + pr_changes.body,
-        head=pr_changes.pr_head,
-        base=branch_name if branch_name else SweepConfig.get_branch(repo),
-    )
-    pr.add_to_assignees(username)
-    buttons = []
-    for changed_file in changed_files:
-        buttons.append(Button(label=f"{RESET_FILE} {changed_file}"))
-    revert_buttons_list = ButtonList(buttons=buttons, title=REVERT_CHANGED_FILES_TITLE)
-    pr.create_issue_comment(revert_buttons_list.serialize())
-    pr.add_to_labels(GITHUB_LABEL_NAME)
+    try:
+        pr = repo.create_pull(
+            title=pr_changes.title,
+            body=pr_actions_message + rule_description + pr_changes.body,
+            head=pr_changes.pr_head,
+            base=branch_name if branch_name else SweepConfig.get_branch(repo),
+        )
+        pr.add_to_assignees(username)
+        buttons = []
+        for changed_file in changed_files:
+            buttons.append(Button(label=f"{RESET_FILE} {changed_file}"))
+        revert_buttons_list = ButtonList(buttons=buttons, title=REVERT_CHANGED_FILES_TITLE)
+        pr.create_issue_comment(revert_buttons_list.serialize())
+        pr.add_to_labels(GITHUB_LABEL_NAME)
+    except Exception as e:
+        logger.error(f"Failed to create PR: {e}")
+        return {'error': str(e)}
 
     return pr
