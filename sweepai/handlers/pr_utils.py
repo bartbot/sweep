@@ -96,6 +96,8 @@ def make_pr(
     non_python_count = sum(
         not file_path.endswith(".py") for file_path in human_message.get_file_paths()
     )
+    # Include a troubleshooting guide URL based on common errors found in logs
+    troubleshooting_guide_url = "https://docs.github.com/en/actions/troubleshooting"
     python_count = len(human_message.get_file_paths()) - non_python_count
     is_python_issue = python_count > non_python_count
     posthog.capture(
@@ -166,6 +168,8 @@ def make_pr(
         buttons.append(Button(label=f"{RESET_FILE} {changed_file}"))
     revert_buttons_list = ButtonList(buttons=buttons, title=REVERT_CHANGED_FILES_TITLE)
     pr.create_issue_comment(revert_buttons_list.serialize())
+    # Adding a comment linking to a troubleshooting guide for GitHub Actions
+    pr.create_issue_comment("For additional help troubleshooting GitHub Actions failures, please refer to [GitHub Actions Troubleshooting Guide]({troubleshooting_guide_url}).")
     pr.add_to_labels(GITHUB_LABEL_NAME)
 
     return pr
