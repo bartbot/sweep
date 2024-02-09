@@ -51,6 +51,7 @@ from sweepai.handlers.create_pr import (  # type: ignore
     create_gha_pr,
 )
 from sweepai.handlers.on_button_click import handle_button_click
+from sweepai.utils.github_actions_transition import update_workflow_file
 from sweepai.handlers.on_check_suite import (  # type: ignore
     clean_logs,
     download_logs,
@@ -330,6 +331,12 @@ async def handle_request(request_dict, event=None):
                                         "title": "[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     }
                                 )
+                                # List and update GitHub Actions workflow files
+                                workflow_files = g.get_repo(request_dict["repository"]["full_name"]).get_contents('.github/workflows', ref='main')
+                                for file in workflow_files:
+                                    if file.path.endswith('.yml'):
+                                        update_workflow_file(file.path)
+
                                 make_pr(
                                     title="[Sweep GHA Fix] Fix the failing GitHub Actions",
                                     repo_description=repo.description,
