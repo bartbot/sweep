@@ -302,7 +302,7 @@ async def handle_request(request_dict, event=None):
                                             request.installation.id,
                                             detailed=True
                                         )
-                                        logs, user_message = clean_logs(logs, detailed_failure_info)
+                                        logs, user_message = clean_logs(logs, detailed_failure_info, include_potential_causes=True)
                                         commit_author = request.sender.login
                                         tracking_id = get_hash()
                                         stack_pr(
@@ -329,6 +329,8 @@ async def handle_request(request_dict, event=None):
                                     data={
                                         "username": commit_author,
                                         "title": "[Sweep GHA Fix] Fix the failing GitHub Actions",
+                                        "summary": f"A summary of the failure: {user_message}",
+                                        "tracking_id": tracking_id
                                     }
                                 )
                                 make_pr(
