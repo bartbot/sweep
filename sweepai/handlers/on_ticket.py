@@ -17,9 +17,9 @@ import openai
 import requests
 import yaml
 import yamllint.config as yamllint_config
-from github import BadCredentialsException, Github, Repository
-from github.Issue import Issue
-from github.PullRequest import PullRequest as GithubPullRequest
+import gitlab
+
+from gitlab.v4.objects import ProjectIssue, ProjectMergeRequest, Project, GitlabError
 from loguru import logger
 from tabulate import tabulate
 from tqdm import tqdm
@@ -70,11 +70,9 @@ from sweepai.utils.buttons import Button, ButtonList, create_action_buttons
 from sweepai.utils.chat_logger import ChatLogger
 from sweepai.utils.diff import generate_diff
 from sweepai.utils.event_logger import posthog
-from sweepai.utils.github_utils import (
-    CURRENT_USERNAME,
+from sweepai.utils.gitlab_utils import (
+    get_gitlab_client,
     ClonedRepo,
-    convert_pr_draft_field,
-    get_github_client,
 )
 from sweepai.utils.progress import (
     AssistantConversation,
@@ -447,10 +445,10 @@ def on_ticket(
             summary = re.sub("\n\n", "\n", summary, flags=re.DOTALL)
 
             repo_name = repo_full_name
-            user_token, g = get_github_client(installation_id)
-            repo = g.get_repo(repo_full_name)
-            current_issue: Issue = repo.get_issue(number=issue_number)
-            assignee = current_issue.assignee.login if current_issue.assignee else None
+            gl = get_gitlab_client(installation_id)
+            project = gl.projects.get(repo_full_name)
+            current_issue = project.issues.get(issue_number)
+            assignee = current_issue.assignee['username'] if current_issue.assignee else None
             if assignee is None:
                 assignee = current_issue.user.login
 
@@ -675,9 +673,9 @@ def on_ticket(
                 initial_sandbox_response_file = None
 
                 def refresh_token():
-                    user_token, g = get_github_client(installation_id)
-                    repo = g.get_repo(repo_full_name)
-                    return user_token, g, repo
+                    gl = get_gitlab_client(installation_id)
+                    project = gl.projects.get(repo_full_name)
+                    return gl, project
 
                 def edit_sweep_comment(
                     message: str,
@@ -742,8 +740,8 @@ def on_ticket(
                         logger.error(
                             f"Bad credentials, refreshing token (tracking ID: `{tracking_id}`)"
                         )
-                        user_token, g = get_github_client(installation_id)
-                        repo = g.get_repo(repo_full_name)
+                        gl = get_gitlab_client(installation_id)
+                        project = gl.projects.get(repo_full_name)
 
                         issue_comment = None
                         for comment in comments:
@@ -1460,7 +1458,9 @@ def on_ticket(
                     )
 
                     try:
-                        pr.add_to_assignees(username)
+                        # GitLab equivalent for adding assignees to merge requests
+                        project.issues.get(issue_number).assignee_ids = [project.members.get(username).id]
+                        project.issues.save()
                     except Exception as e:
                         logger.error(
                             f"Failed to add assignee {username}: {e}, probably a bot."
@@ -1481,7 +1481,9 @@ def on_ticket(
                         )
 
                     # add comments before labelling
-                    pr.add_to_labels(GITHUB_LABEL_NAME)
+                    # GitLab equivalent for adding labels to merge requests
+                    project.issues.get(issue_number).labels.append('GitLab_Label_Name')
+                    project.issues.save()
                     current_issue.create_reaction("rocket")
                     heres_pr_message = f'<h1 align="center">🚀 Here\'s the PR! <a href="{pr.html_url}">#{pr.number}</a></h1>'
                     progress_message = f'<div align="center"><b>See Sweep\'s progress at <a href="{PROGRESS_BASE_URL}/issues/{tracking_id}">the progress dashboard</a>!</b></div>'
