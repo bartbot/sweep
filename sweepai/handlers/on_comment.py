@@ -20,6 +20,7 @@ from sweepai.config.server import (
 from sweepai.core.context_pruning import get_relevant_context
 from sweepai.core.entities import FileChangeRequest, MockPR, NoFilesException
 from sweepai.core.sweep_bot import SweepBot
+from sweepai.utils.gitlab_utils import get_gitlab_client, get_mr_comments, post_mr_comment
 from sweepai.handlers.on_review import get_pr_diffs
 from sweepai.utils.chat_logger import ChatLogger
 from sweepai.utils.event_logger import posthog
@@ -53,6 +54,7 @@ def on_comment(
     comment_type: str = "comment",
     type: str = "comment",
     tracking_id: str = None,
+    platform: str = "github",
 ):
     with logger.contextualize(
         tracking_id=tracking_id,
@@ -63,6 +65,13 @@ def on_comment(
         )
         organization, repo_name = repo_full_name.split("/")
         start_time = time.time()
+
+        if platform == "gitlab":
+            # GitLab handling logic goes here
+            pass
+        else:
+            _token, g = get_github_client(installation_id)
+            repo = g.get_repo(repo_full_name)
 
         _token, g = get_github_client(installation_id)
         repo = g.get_repo(repo_full_name)
