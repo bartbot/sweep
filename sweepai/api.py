@@ -350,10 +350,10 @@ def handle_request(request_dict, event=None):
         return {"success": True}
 
 
-@app.post("/")
+@app.route("/webhook", methods=["POST"])
 def webhook(
     request_dict: dict = Body(...),
-    x_github_event: Optional[str] = Header(None, alias="X-GitHub-Event"),
+    x_gitlab_event: Optional[str] = Header(None, alias="X-GitLab-Event"),
 ):
     """Handle a webhook request from GitHub."""
     with logger.contextualize(tracking_id="main", env=ENV):
