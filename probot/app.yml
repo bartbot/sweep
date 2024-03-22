@@ -132,13 +132,13 @@ default_permissions:
   workflows: write
 
 # The name of the GitHub App. Defaults to the name specified in package.json
-name: sweep-example-name
+name: sweep-gitlab-app
 
 # The homepage of your GitHub App.
-url: https://docs.sweep.dev/usage/deployment
+url: https://docs.sweep.dev/gitlab
 
 # A description of the GitHub App.
-description: Self-hosted Sweep, an AI-powered junior developer
+description: Self-hosted Sweep for GitLab, an AI-powered junior developer
 
 # Set to true when your GitHub App is available to the public or false when it is only accessible to the owner of the app.
 # Default: true
