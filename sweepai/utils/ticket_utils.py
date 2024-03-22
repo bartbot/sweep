@@ -2,8 +2,9 @@ import traceback
 from time import time
 
 from loguru import logger
+from tqdm import tqdm
 
-from sweepai.config.client import SweepConfig
+from sweepai.config.client import SweepConfig, get_blocked_dirs
 from sweepai.core.context_pruning import RepoContextManager, get_relevant_context
 from sweepai.core.lexical_search import (
     compute_vector_search_scores,
@@ -14,19 +15,60 @@ from sweepai.logn.cache import file_cache
 from sweepai.utils.chat_logger import discord_log_error
 from sweepai.utils.event_logger import posthog
 from sweepai.utils.github_utils import ClonedRepo
+from sweepai.utils.openai_listwise_reranker import listwise_rerank_snippets
 from sweepai.utils.progress import TicketProgress
 
+"""
+Input queries are in natural language so both lexical search 
+and vector search have a heavy bias towards natural language
+files such as tests, docs and localization files. Therefore,
+we add adjustment scores to compensate for this bias.
+"""
+
+prefix_adjustment = {
+    "doc": -0.5,
+    "example": -0.75,
+}
+
+suffix_adjustment = {
+    ".txt": -0.5,
+    ".rst": -0.5,
+    ".md": -0.5,
+    ".html": -0.5,
+    ".po": -1,
+    ".json": -0.5,
+    ".toml": -0.5,
+    ".yaml": -0.5,
+    ".yml": -0.5,
+    ".spec.ts": -1,
+    ".spec.js": -1,
+    ".generated.ts": -1.5,
+    ".generated.graphql": -1.5,
+    ".generated.js": -1.5,
+}
+
+substring_adjustment = {
+    "tests/": -1,
+    "test_": -1,
+    "_test": -1,
+    "migrations/": -1.5,
+}
 
 @file_cache()
-def prep_snippets(
+def get_top_k_snippets(
     cloned_repo: ClonedRepo,
     query: str,
     ticket_progress: TicketProgress | None = None,
+    k: int = 15,
 ):
     sweep_config: SweepConfig = SweepConfig()
-
-    file_list, snippets, lexical_index = prepare_lexical_search_index(
-        cloned_repo, sweep_config, cloned_repo.repo_full_name, ticket_progress
+    blocked_dirs = get_blocked_dirs(cloned_repo.repo)
+    sweep_config.exclude_dirs += blocked_dirs
+    _, snippets, lexical_index = prepare_lexical_search_index(
+        cloned_repo.cached_dir,
+        sweep_config,
+        ticket_progress,
+        ref_name=f"{str(cloned_repo.git_repo.head.commit.hexsha)}",
     )
     if ticket_progress:
         ticket_progress.search_progress.indexing_progress = (
@@ -36,31 +78,55 @@ def prep_snippets(
 
     for snippet in snippets:
         snippet.file_path = snippet.file_path[len(cloned_repo.cached_dir) + 1 :]
-
     content_to_lexical_score = search_index(query, lexical_index)
-    snippet_to_key = (
-        lambda snippet: f"{snippet.file_path}:{snippet.start}:{snippet.end}"
-    )
-
-    files_to_scores = compute_vector_search_scores(file_list, cloned_repo)
-    for snippet in snippets:
-        codebase_score = files_to_scores.get(snippet.file_path, 0.08)
-        snippet_score = 0.1
-        if snippet_to_key(snippet) in content_to_lexical_score:
-            snippet_score = (
-                content_to_lexical_score[snippet_to_key(snippet)] * codebase_score
+    files_to_scores = compute_vector_search_scores(query, snippets)
+    for snippet in tqdm(snippets):
+        vector_score = files_to_scores.get(snippet.denotation, 0.04)
+        snippet_score = 0.02
+        if snippet.denotation in content_to_lexical_score:
+            # roughly fine tuned vector score weight based on average score from search_eval.py on 10 test cases Feb. 13, 2024
+            snippet_score = content_to_lexical_score[snippet.denotation] + (
+                vector_score * 3.5
             )
+            content_to_lexical_score[snippet.denotation] = snippet_score
         else:
-            content_to_lexical_score[snippet_to_key(snippet)] = (
-                snippet_score * codebase_score
-            )
-
+            content_to_lexical_score[snippet.denotation] = snippet_score * vector_score
+        for prefix, adjustment in prefix_adjustment.items():
+            if snippet.file_path.startswith(prefix):
+                content_to_lexical_score[snippet.denotation] += adjustment
+                break
+        for suffix, adjustment in suffix_adjustment.items():
+            if snippet.file_path.endswith(suffix):
+                content_to_lexical_score[snippet.denotation] += adjustment
+                break
+        for substring, adjustment in substring_adjustment.items():
+            if substring in snippet.file_path:
+                content_to_lexical_score[snippet.denotation] += adjustment
+                break
     ranked_snippets = sorted(
         snippets,
-        key=lambda snippet: content_to_lexical_score[snippet_to_key(snippet)],
+        key=lambda snippet: content_to_lexical_score[snippet.denotation],
         reverse=True,
     )
-    ranked_snippets = ranked_snippets[:7]
+    # sort the top 30 using listwise reranking
+    # you can use snippet.denotation and snippet.get_snippet()
+    NUM_SNIPPETS_TO_RERANK = 30
+    # disabled for now for testing
+    ranked_snippets[:NUM_SNIPPETS_TO_RERANK] = listwise_rerank_snippets(query, ranked_snippets[:NUM_SNIPPETS_TO_RERANK])
+    # TODO: we should rescore the snippets after reranking by interpolating their new scores between the 0th and 30th previous scores
+    ranked_snippets = ranked_snippets[:k]
+    return ranked_snippets, snippets, content_to_lexical_score
+
+
+def prep_snippets(
+    cloned_repo: ClonedRepo,
+    query: str,
+    ticket_progress: TicketProgress | None = None,
+    k: int = 15,
+):
+    ranked_snippets, snippets, content_to_lexical_score = get_top_k_snippets(
+        cloned_repo, query, ticket_progress, k
+    )
     if ticket_progress:
         ticket_progress.search_progress.retrieved_snippets = ranked_snippets
         ticket_progress.save()
@@ -72,10 +138,9 @@ def prep_snippets(
             if idx > snippet_depth // 2:
                 prefixes.append("/".join(snippet_path.split("/")[:idx]) + "/")
         prefixes.append(snippet_path)
-    included_files = [snippet.file_path for snippet in ranked_snippets]
     _, dir_obj = cloned_repo.list_directory_tree(
-        included_directories=prefixes,
-        included_files=included_files,
+        included_directories=list(set(prefixes)),
+        included_files=list(set(snippet_paths)),
     )
     repo_context_manager = RepoContextManager(
         dir_obj=dir_obj,
@@ -198,7 +263,7 @@ def fire_and_forget_wrapper(call):
     def wrapper(*args, **kwargs):
         try:
             return call(*args, **kwargs)
-        except:
+        except Exception:
             pass
         # def run_in_thread(call, *a, **kw):
         #     try:

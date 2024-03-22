@@ -3,9 +3,10 @@ from __future__ import annotations
 # Do not save logs for main process
 import ctypes
 import json
+import subprocess
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from fastapi import (
@@ -15,13 +16,14 @@ from fastapi import (
     Header,
     HTTPException,
     Path,
+    Request,
     Security,
     status,
 )
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.templating import Jinja2Templates
 from github.Commit import Commit
-from hatchet_sdk import Context, Hatchet
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from sweepai.config.client import (
@@ -37,6 +39,8 @@ from sweepai.config.client import (
     get_rules,
 )
 from sweepai.config.server import (
+    BLACKLISTED_USERS,
+    DISABLED_REPOS,
     DISCORD_FEEDBACK_WEBHOOK_URL,
     ENV,
     GHA_AUTOFIX_ENABLED,
@@ -48,13 +52,14 @@ from sweepai.config.server import (
     MERGE_CONFLICT_ENABLED,
 )
 from sweepai.core.entities import PRChangeRequest
+from sweepai.global_threads import global_threads
 from sweepai.handlers.create_pr import (  # type: ignore
     add_config_to_top_repos,
     create_gha_pr,
 )
 from sweepai.handlers.on_button_click import handle_button_click
 from sweepai.handlers.on_check_suite import (  # type: ignore
-    clean_logs,
+    clean_gh_logs,
     download_logs,
     on_check_suite,
 )
@@ -72,7 +77,7 @@ from sweepai.utils.buttons import (
 )
 from sweepai.utils.chat_logger import ChatLogger
 from sweepai.utils.event_logger import logger, posthog
-from sweepai.utils.github_utils import get_github_client
+from sweepai.utils.github_utils import CURRENT_USERNAME, get_github_client
 from sweepai.utils.progress import TicketProgress
 from sweepai.utils.safe_pqueue import SafePriorityQueue
 from sweepai.utils.str_utils import BOT_SUFFIX, get_hash
@@ -90,18 +95,21 @@ from sweepai.web.health import health_check
 
 app = FastAPI()
 
-import tracemalloc
-
-tracemalloc.start()
-
 events = {}
 on_ticket_events = {}
 
 security = HTTPBearer()
 
-logger.bind(application="webhook")
+templates = Jinja2Templates(directory="sweepai/web")
+version_command = r"""git config --global --add safe.directory /app
+timestamp=$(git log -1 --format="%at")
+date -d "@$timestamp" +%y.%m.%d.%H 2>/dev/null || date -r "$timestamp" +%y.%m.%d.%H"""
+try:
+    version = subprocess.check_output(version_command, shell=True, text=True).strip()
+except Exception:
+    version = time.strftime("%y.%m.%d.%H")
 
-global_threads = []
+logger.bind(application="webhook")
 
 
 def auth_metrics(credentials: HTTPAuthorizationCredentials = Security(security)):
@@ -261,8 +269,10 @@ def redirect_to_health():
 
 
 @app.get("/", response_class=HTMLResponse)
-def home():
-    return "<h2>Sweep Webhook is up and running! To get started, copy the URL into the GitHub App settings' webhook field.</h2>"
+def home(request: Request):
+    return templates.TemplateResponse(
+        name="index.html", context={"version": version, "request": request}
+    )
 
 
 @app.get("/ticket_progress/{tracking_id}")
@@ -271,8 +281,10 @@ def progress(tracking_id: str = Path(...)):
     return ticket_progress.dict()
 
 
-def init_hatchet() -> Hatchet | None:
+def init_hatchet() -> Any | None:
     try:
+        from hatchet_sdk import Context, Hatchet
+
         hatchet = Hatchet(debug=True)
 
         worker = hatchet.worker("github-worker")
@@ -288,7 +300,7 @@ def init_hatchet() -> Hatchet | None:
                 request_dict = event_payload.get("request")
                 event = event_payload.get("event")
 
-                run(request_dict, event)
+                handle_event(request_dict, event)
 
         workflow = OnGithubEvent()
         worker.register_workflow(workflow)
@@ -311,7 +323,7 @@ def handle_github_webhook(event_payload):
     # if hatchet:
     #     hatchet.client.event.push("github:webhook", event_payload)
     # else:
-    run(event_payload.get("request"), event_payload.get("event"))
+    handle_event(event_payload.get("request"), event_payload.get("event"))
 
 
 def handle_request(request_dict, event=None):
@@ -405,12 +417,17 @@ def update_sweep_prs_v2(repo_full_name: str, installation_id: int):
                 logger.warning(
                     f"Failed to merge changes from default branch into PR #{pr.number}: {e}"
                 )
-    except:
+    except Exception:
         logger.warning("Failed to update sweep PRs")
 
 
-def run(request_dict, event):
+def handle_event(request_dict, event):
     action = request_dict.get("action")
+
+    if repo_full_name := request_dict.get("repository", {}).get("full_name"):
+        if repo_full_name in DISABLED_REPOS:
+            logger.warning(f"Repo {repo_full_name} is disabled")
+            return {"success": False, "error_message": "Repo is disabled"}
 
     with logger.contextualize(tracking_id="main", env=ENV):
         match event, action:
@@ -462,7 +479,7 @@ def run(request_dict, event):
                                 request.check_run.run_id,
                                 request.installation.id,
                             )
-                            logs, user_message = clean_logs(logs)
+                            logs, user_message = clean_gh_logs(logs)
                             attributor = request.sender.login
                             if attributor.endswith("[bot]"):
                                 attributor = commit.author.login
@@ -514,7 +531,7 @@ def run(request_dict, event):
                             request.check_run.run_id,
                             request.installation.id,
                         )
-                        logs, user_message = clean_logs(logs)
+                        logs, user_message = clean_gh_logs(logs)
                         chat_logger = ChatLogger(
                             data={
                                 "username": attributor,
@@ -567,7 +584,7 @@ def run(request_dict, event):
                     )
                     pr.create_issue_comment(rules_buttons_list.serialize() + BOT_SUFFIX)
 
-                if pr.mergeable == False and MERGE_CONFLICT_ENABLED:
+                if pr.mergeable is False and MERGE_CONFLICT_ENABLED:
                     attributor = pr.user.login
                     if attributor.endswith("[bot]"):
                         attributor = pr.assignee.login
@@ -635,6 +652,7 @@ def run(request_dict, event):
                     and request.changes.body_from is not None
                     and button_title_match
                     and request.sender.type == "User"
+                    and request.comment.user.login not in BLACKLISTED_USERS
                 ):
                     run_on_button_click(request_dict)
 
@@ -650,6 +668,7 @@ def run(request_dict, event):
                     )
                     and sweep_labeled_issue
                     and request.sender.type == "User"
+                    and request.comment.user.login not in BLACKLISTED_USERS
                 ):
                     # Restart Sweep on this issue
                     restart_sweep = True
@@ -658,6 +677,7 @@ def run(request_dict, event):
                     request.issue is not None
                     and sweep_labeled_issue
                     and request.comment.user.type == "User"
+                    and request.comment.user.login not in BLACKLISTED_USERS
                     and not request.comment.user.login.startswith("sweep")
                     and not (
                         request.issue.pull_request and request.issue.pull_request.url
@@ -695,7 +715,9 @@ def run(request_dict, event):
                         edited=True,
                     )
                 elif (
-                    request.issue.pull_request and request.comment.user.type == "User"
+                    request.issue.pull_request
+                    and request.comment.user.type == "User"
+                    and request.comment.user.login not in BLACKLISTED_USERS
                 ):  # TODO(sweep): set a limit
                     logger.info(f"Handling comment on PR: {request.issue.pull_request}")
                     _, g = get_github_client(request.installation.id)
@@ -706,7 +728,7 @@ def run(request_dict, event):
                     if (
                         comment.lower().startswith("sweep:")
                         or any(label.name.lower() == "sweep" for label in labels)
-                    ) and not BOT_SUFFIX in comment:
+                    ) and BOT_SUFFIX not in comment:
                         pr_change_request = PRChangeRequest(
                             params={
                                 "comment_type": "comment",
@@ -728,6 +750,7 @@ def run(request_dict, event):
                     GITHUB_LABEL_NAME
                     in [label.name.lower() for label in request.issue.labels]
                     and request.sender.type == "User"
+                    and request.comment.user.login not in BLACKLISTED_USERS
                     and not request.sender.login.startswith("sweep")
                 ):
                     logger.info("New issue edited")
@@ -775,10 +798,11 @@ def run(request_dict, event):
                     and GITHUB_LABEL_NAME
                     in [label.name.lower() for label in request.issue.labels]
                     and request.comment.user.type == "User"
+                    and request.comment.user.login not in BLACKLISTED_USERS
                     and not (
                         request.issue.pull_request and request.issue.pull_request.url
                     )
-                    and not (BOT_SUFFIX in request.comment.body)
+                    and BOT_SUFFIX not in request.comment.body
                 ):
                     request.issue.body = request.issue.body or ""
                     request.repository.description = (
@@ -810,7 +834,8 @@ def run(request_dict, event):
                 elif (
                     request.issue.pull_request
                     and request.comment.user.type == "User"
-                    and not (BOT_SUFFIX in request.comment.body)
+                    and request.comment.user.login not in BLACKLISTED_USERS
+                    and BOT_SUFFIX not in request.comment.body
                 ):  # TODO(sweep): set a limit
                     _, g = get_github_client(request.installation.id)
                     repo = g.get_repo(request.repository.full_name)
@@ -820,7 +845,7 @@ def run(request_dict, event):
                     if (
                         comment.lower().startswith("sweep:")
                         or any(label.name.lower() == "sweep" for label in labels)
-                        and not BOT_SUFFIX in comment
+                        and BOT_SUFFIX not in comment
                     ):
                         pr_change_request = PRChangeRequest(
                             params={
@@ -850,7 +875,8 @@ def run(request_dict, event):
                         or any(label.name.lower() == "sweep" for label in labels)
                     )
                     and request.comment.user.type == "User"
-                    and not BOT_SUFFIX in comment
+                    and request.comment.user.login not in BLACKLISTED_USERS
+                    and BOT_SUFFIX not in comment
                 ):
                     pr_change_request = PRChangeRequest(
                         params={
@@ -880,7 +906,8 @@ def run(request_dict, event):
                         or any(label.name.lower() == "sweep" for label in labels)
                     )
                     and request.comment.user.type == "User"
-                    and not BOT_SUFFIX in comment
+                    and request.comment.user.login not in BLACKLISTED_USERS
+                    and BOT_SUFFIX not in comment
                 ):
                     pr_change_request = PRChangeRequest(
                         params={
@@ -972,7 +999,7 @@ def run(request_dict, event):
                             "content": f"{emoji} {request.pull_request.html_url} ({request.sender.login})\n{request.pull_request.commits} commits, {request.pull_request.changed_files} files: +{request.pull_request.additions}, -{request.pull_request.deletions}"
                         }
                         headers = {"Content-Type": "application/json"}
-                        response = requests.post(
+                        requests.post(
                             DISCORD_FEEDBACK_WEBHOOK_URL,
                             data=json.dumps(data),
                             headers=headers,
@@ -1048,12 +1075,28 @@ def run(request_dict, event):
                     if pr_request.pull_request.merged_by
                     else None
                 )
-                if GITHUB_BOT_USERNAME == commit_author and merged_by is not None:
+                if CURRENT_USERNAME == commit_author and merged_by is not None:
                     event_name = "merged_sweep_pr"
                     if pr_request.pull_request.title.startswith("[config]"):
                         event_name = "config_pr_merged"
                     elif pr_request.pull_request.title.startswith("[Sweep Rules]"):
                         event_name = "sweep_rules_pr_merged"
+                    edited_by_developers = False
+                    _token, g = get_github_client(pr_request.installation.id)
+                    pr = g.get_repo(pr_request.repository.full_name).get_pull(
+                        pr_request.number
+                    )
+                    
+                    total_lines_in_commit = 0
+                    total_lines_edited_by_developer = 0
+                    edited_by_developers = False
+                    for commit in pr.get_commits():
+                        lines_modified = commit.stats.additions + commit.stats.deletions
+                        total_lines_in_commit += lines_modified
+                        if commit.author.login != CURRENT_USERNAME:
+                            total_lines_edited_by_developer += lines_modified
+                    # this was edited by a developer if at least 25% of the lines were edited by a developer
+                    edited_by_developers = total_lines_in_commit > 0 and (total_lines_edited_by_developer / total_lines_in_commit) >= 0.25
                     posthog.capture(
                         merged_by,
                         event_name,
@@ -1066,11 +1109,14 @@ def run(request_dict, event):
                             "deletions": pr_request.pull_request.deletions,
                             "total_changes": pr_request.pull_request.additions
                             + pr_request.pull_request.deletions,
+                            "edited_by_developers": edited_by_developers,
+                            "total_lines_in_commit": total_lines_in_commit,
+                            "total_lines_edited_by_developer": total_lines_edited_by_developer,
                         },
                     )
                 chat_logger = ChatLogger({"username": merged_by})
             case "push", None:
-                if event != "pull_request" or request_dict["base"]["merged"] == True:
+                if event != "pull_request" or request_dict["base"]["merged"] is True:
                     chat_logger = ChatLogger(
                         {"username": request_dict["pusher"]["name"]}
                     )
@@ -1103,7 +1149,7 @@ def run(request_dict, event):
                             logger.info(
                                 f"PR associated with branch {branch_name}: #{pr.number} - {pr.title}"
                             )
-                            if pr.mergeable == False and MERGE_CONFLICT_ENABLED:
+                            if pr.mergeable is False and MERGE_CONFLICT_ENABLED:
                                 attributor = pr.user.login
                                 if attributor.endswith("[bot]"):
                                     attributor = pr.assignee.login
