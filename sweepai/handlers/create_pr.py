@@ -8,6 +8,7 @@ from typing import Any, Generator
 
 import openai
 from github.Repository import Repository
+from sweepai.utils.gitlab_utils import create_gitlab_mr
 from loguru import logger
 
 from sweepai.config.client import DEFAULT_RULES_STRING, SweepConfig, get_blocked_dirs
@@ -334,7 +335,9 @@ def create_config_pr(
 
     logger.print("Default branch", repo.default_branch)
     logger.print("New branch", branch_name)
-    pr = repo.create_pull(
+    # pr = repo.create_pull(
+    # Replaced GitHub PR creation with GitLab MR creation
+    create_gitlab_mr(
         title=title,
         body="""🎉 Thank you for installing Sweep! We're thrilled to announce the latest update for Sweep, your AI junior developer on GitHub. This PR creates a `sweep.yaml` config file, allowing you to personalize Sweep's performance according to your project requirements.
 
@@ -424,7 +427,9 @@ def create_gha_pr(g, repo):
     )
 
     # Create a PR from this branch to the main branch
-    pr = repo.create_pull(
+    # pr = repo.create_pull(
+    # Replaced GitHub PR creation with GitLab MR creation
+    create_gitlab_mr(
         title="Enable GitHub Actions",
         body="This PR enables GitHub Actions for this repository.",
         head=branch_name,
