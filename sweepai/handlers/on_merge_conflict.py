@@ -52,11 +52,17 @@ def on_merge_conflict(
     tracking_id: str,
 ):
     # copied from stack_pr
-    token, g = get_github_client(installation_id=installation_id)
-    try:
-        repo = g.get_repo(repo_full_name)
-    except Exception as e:
-        print("Exception occured while getting repo", e)
+    if platform == "github":
+        token, g = get_github_client(installation_id=installation_id)
+        try:
+            repo = g.get_repo(repo_full_name)
+        except Exception as e:
+            print("Exception occured while getting repo", e)
+    elif platform == "gitlab":
+        # GitLab logic will be implemented here
+        pass
+    else:
+        raise ValueError("Unsupported platform")
     pr: PullRequest = repo.get_pull(pr_number)
     branch = pr.head.ref
 
