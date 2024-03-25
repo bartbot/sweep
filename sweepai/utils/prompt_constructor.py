@@ -18,7 +18,7 @@ class HumanMessagePrompt(BaseModel):
     snippets: list
     tree: str
     repo_description: str = ""
-    snippet_text = ""
+    snippet_text: str = ""
     commit_history: list = []
 
     def delete_file(self, file_path):
@@ -71,7 +71,9 @@ class HumanMessagePrompt(BaseModel):
 
     @staticmethod
     def render_snippet_array(snippets, snippet_tag=None):
-        joined_snippets = "\n".join([snippet.xml for snippet in snippets])
+        joined_snippets = "\n".join(
+            [snippet.get_xml(add_lines=False) for snippet in snippets]
+        )
         start_snippet_tag = (
             "<relevant_snippets_in_repo>" if not snippet_tag else f"<{snippet_tag}>"
         )
@@ -105,9 +107,11 @@ class HumanMessagePrompt(BaseModel):
                     repo_description=self.repo_description,
                     tree=self.tree.strip("\n"),
                     title=self.title,
-                    description=f"Issue Description: {self.summary}"
-                    if self.summary.strip()
-                    else "",
+                    description=(
+                        f"Issue Description: {self.summary}"
+                        if self.summary.strip()
+                        else ""
+                    ),
                     relevant_snippets=relevant_snippets,
                     relevant_directories=relevant_directories,
                     relevant_commit_history=relevant_commit_history,
@@ -127,7 +131,8 @@ class HumanMessagePrompt(BaseModel):
         )
         return f"""# Repo & Issue Metadata
 Repo: {self.repo_name}: {self.repo_description}
-Issue Title: {self.title}{issue_description}"""
+Issue Title: {self.title}
+{issue_description}"""
 
 
 def render_snippets(snippets):
@@ -210,9 +215,9 @@ class HumanMessageCommentPrompt(HumanMessagePrompt):
                         else self.comment
                     ),
                     repo_name=self.repo_name,
-                    repo_description=self.repo_description
-                    if self.repo_description
-                    else "",
+                    repo_description=(
+                        self.repo_description if self.repo_description else ""
+                    ),
                     diff=self.format_diffs(),
                     title=self.title,
                     tree=self.tree,
@@ -220,9 +225,9 @@ class HumanMessageCommentPrompt(HumanMessagePrompt):
                     relevant_directories=self.get_relevant_directories(),
                     relevant_snippets=self.render_snippets(),
                     relevant_commit_history=self.get_commit_history(),
-                    relevant_docs=f"\n{self.relevant_docs}"
-                    if self.relevant_docs
-                    else "",  # conditionally add newline
+                    relevant_docs=(
+                        f"\n{self.relevant_docs}" if self.relevant_docs else ""
+                    ),  # conditionally add newline
                 ),
             }
             for msg in human_message_prompt_comment
@@ -238,7 +243,8 @@ class HumanMessageCommentPrompt(HumanMessagePrompt):
         )
         return f"""# Repo & Issue Metadata
 Repo: {self.repo_name}: {self.repo_description}
-Issue Title: {self.title}{issue_description}
+Issue Title: {self.title}
+{issue_description}
 The above was the original plan. Please address the user comment: {self.comment}"""
 
 

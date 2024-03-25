@@ -5,10 +5,12 @@ import pickle
 
 from loguru import logger
 
-from sweepai.config.server import GITHUB_BOT_USERNAME
+from sweepai.config.server import DEBUG
 
 TEST_BOT_NAME = "sweep-nightly[bot]"
 MAX_DEPTH = 6
+# if DEBUG:
+#     logger.debug("File cache is disabled.")
 
 
 def recursive_hash(value, depth=0, ignore_params=[]):
@@ -45,13 +47,16 @@ def hash_code(code):
     return hashlib.md5(code.encode()).hexdigest()
 
 
-def file_cache(ignore_params=[]):
-    """Decorator to cache function output based on its inputs, ignoring specified parameters."""
+def file_cache(ignore_params=[], verbose=False):
+    """Decorator to cache function output based on its inputs, ignoring specified parameters.
+    Ignore parameters are used to avoid caching on non-deterministic inputs, such as timestamps.
+    We can also ignore parameters that are slow to serialize/constant across runs, such as large objects.
+    """
 
     def decorator(func):
-        if GITHUB_BOT_USERNAME != TEST_BOT_NAME:
-            print("File cache is disabled.")
+        if DEBUG:
             return func
+        func_source_code_hash = hash_code(inspect.getsource(func))
 
         def wrapper(*args, **kwargs):
             cache_dir = "/tmp/file_cache"
@@ -71,7 +76,7 @@ def file_cache(ignore_params=[]):
             arg_hash = (
                 recursive_hash(args_dict, ignore_params=ignore_params)
                 + recursive_hash(kwargs_clone, ignore_params=ignore_params)
-                + hash_code(inspect.getsource(func))
+                + func_source_code_hash
             )
             cache_file = os.path.join(
                 cache_dir, f"{func.__module__}_{func.__name__}_{arg_hash}.pickle"
@@ -80,7 +85,8 @@ def file_cache(ignore_params=[]):
             try:
                 # If cache exists, load and return it
                 if os.path.exists(cache_file):
-                    print("Used cache for function: " + func.__name__)
+                    if verbose:
+                        print("Used cache for function: " + func.__name__)
                     with open(cache_file, "rb") as f:
                         return pickle.load(f)
             except Exception:
@@ -91,8 +97,8 @@ def file_cache(ignore_params=[]):
             try:
                 with open(cache_file, "wb") as f:
                     pickle.dump(result, f)
-            except Exception:
-                logger.info("Pickling failed")
+            except Exception as e:
+                logger.info(f"Pickling failed: {e}")
             return result
 
         return wrapper

@@ -5,8 +5,8 @@ import requests
 import typer
 from github import Github
 
-from sweepai.events import Account, Installation, IssueRequest
 from sweepai.utils.github_utils import get_github_client, get_installation_id
+from sweepai.web.events import Account, Installation, IssueRequest
 
 
 def wait_for_server(host: str):
@@ -101,7 +101,6 @@ def main(
         json=issue_request.dict(),
         headers={"X-GitHub-Event": "issues"},
     )
-    print(response)
     better_stack_link = f"{better_stack_prefix}{html.escape(issue_url)}"
     print(f"Track the logs at the following link:\n\n{better_stack_link}")
 

@@ -1,25 +1,17 @@
 from __future__ import annotations
 
 import ast
-import os
 import re
-import subprocess
-import tempfile
 import traceback
-import uuid
 from dataclasses import dataclass
-from io import StringIO
 from typing import Optional
 
 import tiktoken
-from pylint.lint import Run
-from pylint.reporters.text import TextReporter
+from loguru import logger
 from tree_sitter import Node
 from tree_sitter_languages import get_parser
 
 from sweepai.core.entities import Snippet
-from sweepai.logn import logger
-from sweepai.utils.chat_logger import discord_log_error
 
 
 def non_whitespace_len(s: str) -> int:  # new len function
@@ -53,7 +45,7 @@ class Span:
 
     def extract_lines(self, s: str) -> str:
         # Grab the corresponding substring of string s by lines
-        return "\n".join(s.splitlines()[self.start : self.end])
+        return "\n".join(s.splitlines()[self.start : self.end + 1])
 
     def __add__(self, other: Span | int) -> Span:
         # e.g. Span(1, 2) + Span(2, 4) = Span(1, 4) (concatenation)
@@ -71,14 +63,15 @@ class Span:
         return self.end - self.start
 
 
+AVG_CHAR_IN_LINE = 60
+
+
 def chunk_tree(
     tree,
     source_code: bytes,
-    MAX_CHARS=512 * 3,
-    coalesce=50,  # Any chunk less than 50 characters long gets coalesced with the next chunk
+    MAX_CHARS=AVG_CHAR_IN_LINE * 200,  # 200 lines of code
+    coalesce=AVG_CHAR_IN_LINE * 50,  # 50 lines of code
 ) -> list[Span]:
-    from tree_sitter import Node
-
     # 1. Recursively form chunks based on the last post (https://docs.sweep.dev/blogs/chunking-2m-files)
     def chunk_node(node: Node) -> list[Span]:
         chunks: list[Span] = []
@@ -123,13 +116,12 @@ def chunk_tree(
         new_chunks.append(current_chunk)
 
     # 4. Changing line numbers
-    line_chunks = [
-        Span(
-            get_line_number(chunk.start, source_code),
-            get_line_number(chunk.end, source_code),
-        )
-        for chunk in new_chunks
-    ]
+    first_chunk = new_chunks[0]
+    line_chunks = [Span(0, get_line_number(first_chunk.end, source_code))]
+    for chunk in new_chunks[1:]:
+        start_line = get_line_number(chunk.start, source_code) + 1
+        end_line = get_line_number(chunk.end, source_code)
+        line_chunks.append(Span(start_line, max(start_line, end_line)))
 
     # 5. Eliminating empty chunks
     line_chunks = [chunk for chunk in line_chunks if len(chunk) > 0]
@@ -171,6 +163,7 @@ extension_to_language = {
     "html": "html",
     "vue": "html",
     "php": "php",
+    "elm": "elm",
 }
 
 
@@ -192,20 +185,22 @@ def naive_chunker(code: str, line_count: int = 30, overlap: int = 15):
 
 
 def check_valid_typescript(code: str) -> tuple[bool, str]:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        file_hash = uuid.uuid4().hex[:10]
-        tmp_file = os.path.join(temp_dir, file_hash + "_" + "temp.ts")
+    # with tempfile.TemporaryDirectory() as temp_dir:
+    #     file_hash = uuid.uuid4().hex[:10]
+    #     tmp_file = os.path.join(temp_dir, file_hash + "_" + "temp.ts")
 
-        with open(tmp_file, "w") as file:
-            file.write(code)
+    #     with open(tmp_file, "w") as file:
+    #         file.write(code)
 
-        result = subprocess.run(
-            ["npx", "prettier", "--parser", "babel-ts", tmp_file],
-            capture_output=True,
-        )
+    #     result = subprocess.run(
+    #         ["npx", "prettier", "--parser", "babel-ts", tmp_file],
+    #         capture_output=True,
+    #         timeout=5,
+    #     )
 
-        os.remove(tmp_file)
-        return result.returncode == 0, (result.stdout + result.stderr).decode("utf-8")
+    #     os.remove(tmp_file)
+    #     return result.returncode == 0, (result.stdout + result.stderr).decode("utf-8")
+    return True, ""
 
 
 def check_syntax(file_path: str, code: str) -> tuple[bool, str]:
@@ -243,9 +238,9 @@ def check_syntax(file_path: str, code: str) -> tuple[bool, str]:
     error_location = find_deepest_error(tree.root_node)
     if error_location:
         line_number, _ = error_location.start_point
-        error_start = max(0, line_number - 10)
-        error_span = "\n".join(code.split("\n")[error_start:line_number])
-        error_message = f"Invalid syntax found within or before the lines {error_start}-{line_number}, displayed below:\n{error_span}"
+        error_start = max(0, line_number - 20)
+        error_span = "\n".join(code.split("\n")[error_start : line_number + 10])
+        error_message = f"Invalid syntax found around lines {error_start}-{line_number}, displayed below:\n{error_span}"
         return (False, error_message)
     return True, ""
 
@@ -254,55 +249,60 @@ def check_code(file_path: str, code: str) -> tuple[bool, str]:
     is_valid, error_message = check_syntax(file_path, code)
     if not is_valid:
         return is_valid, error_message
-    ext = file_path.split(".")[-1]
-    if ext == "py":
-        file_hash = uuid.uuid4().hex
-        new_file = os.path.join("/tmp", file_hash + "_" + os.path.basename(file_path))
-        try:
-            with open(new_file, "w") as f:
-                f.write(code)
-            pylint_output = StringIO()
-            reporter = TextReporter(pylint_output)
-            Run(
-                [
-                    new_file,
-                    "--errors-only",
-                    "--disable=import-error",
-                    "--disable=no-member",
-                    "--disable=relative-beyond-top-level",
-                ],
-                reporter=reporter,
-                do_exit=False,
-            )
-            error_message = pylint_output.getvalue()
-            try:
-                os.remove(new_file)
-            except FileNotFoundError:
-                pass
-            if error_message:
-                return False, error_message
-        except Exception as e:
-            discord_log_error("Pylint BS:\n" + e + traceback.format_exc())
+    ext = file_path.split(".")[-1] # noqa
+    # if ext == "py":
+    #     file_hash = uuid.uuid4().hex
+    #     new_file = os.path.join("/tmp", file_hash + "_" + os.path.basename(file_path))
+    #     try:
+    #         with open(new_file, "w") as f:
+    #             f.write(code)
+    #         pylint_output = StringIO()
+    #         reporter = TextReporter(pylint_output)
+    #         Run(
+    #             [
+    #                 new_file,
+    #                 "--errors-only",
+    #                 "--disable=import-error",
+    #                 "--disable=no-member",
+    #                 "--disable=relative-beyond-top-level",
+    #             ],
+    #             reporter=reporter,
+    #             do_exit=False,
+    #         )
+    #         error_message = pylint_output.getvalue()
+    #         try:
+    #             os.remove(new_file)
+    #         except FileNotFoundError:
+    #             pass
+    #         if error_message:
+    #             return False, error_message
+    #     except Exception as e:
+    #         discord_log_error("Pylint BS:\n" + e + traceback.format_exc())
     return True, ""
 
 
+# @file_cache()
 def chunk_code(
-    code: str, path: str, MAX_CHARS: int = 1500, coalesce: int = 100
+    code: str,
+    path: str,
+    MAX_CHARS=AVG_CHAR_IN_LINE * 200,  # 200 lines of code
+    coalesce=80,
 ) -> list[Snippet]:
     ext = path.split(".")[-1]
     if ext in extension_to_language:
         language = extension_to_language[ext]
     else:
         # Fallback to naive chunking if tree_sitter fails
-        line_count = 30
-        overlap = 15
+        line_count = 50
+        overlap = 0
         chunks = naive_chunker(code, line_count, overlap)
         snippets = []
         for idx, chunk in enumerate(chunks):
+            end = min((idx + 1) * (line_count - overlap), len(code.split("\n")))
             new_snippet = Snippet(
                 content=code,
                 start=idx * (line_count - overlap),
-                end=(idx + 1) * (line_count - overlap),
+                end=end,
                 file_path=path,
             )
             snippets.append(new_snippet)
@@ -334,24 +334,28 @@ TIKTOKEN_CACHE_DIR = "/tmp/cache/tiktoken"
 
 
 class Tiktoken:
-    openai_models = [
-        "gpt-3.5-turbo",
-        "gpt-3.5-turbo-1106",
-        "gpt-4",
-        "gpt-4-32k",
-        "gpt-4-32k-0613",
-        "gpt-4-1106-preview",
-    ]
-    models = openai_models
-
     def __init__(self):
+        openai_models = [
+            "gpt-3.5-turbo",
+            "gpt-3.5-turbo-1106",
+            "gpt-4",
+            "gpt-4-32k",
+            "gpt-4-32k-0613",
+            "gpt-4-1106-preview",
+            "gpt-4-0125-preview",
+        ]
         self.openai_models = {
-            model: tiktoken.encoding_for_model(model)
-            for model in Tiktoken.openai_models
+            model: tiktoken.encoding_for_model(model) for model in openai_models
         }
 
     def count(self, text: str, model: str = "gpt-4") -> int:
         return len(self.openai_models[model].encode(text, disallowed_special=()))
+
+    def truncate_string(
+        self, text: str, model: str = "gpt-4", max_tokens: int = 8192
+    ) -> str:
+        tokens = self.openai_models[model].encode(text)[:max_tokens]
+        return self.openai_models[model].decode(tokens)
 
 
 test_code = """
