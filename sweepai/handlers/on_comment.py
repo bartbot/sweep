@@ -67,8 +67,14 @@ def on_comment(
         start_time = time.time()
 
         if platform == "gitlab":
-            # GitLab handling logic goes here
-            pass
+            # GitLab handling logic
+            gl_client = get_gitlab_client(os.environ['GITLAB_OAUTH_TOKEN'])
+            project_id, mr_id = pr_path.split('/')
+            mr_details = get_mr_details(project_id, mr_id, os.environ['GITLAB_OAUTH_TOKEN'])
+            comments = get_mr_comments(project_id, mr_id)
+            # Process GitLab MR comments similar to GitHub PR comments
+            # This is a placeholder for further adaptation of the logic
+            # to handle GitLab merge request comments specifically
         else:
             _token, g = get_github_client(installation_id)
             repo = g.get_repo(repo_full_name)
