@@ -18,14 +18,16 @@ function initializeGitLabApp() {
         callbackURL: gitLabClient.oauth2.callbackURL,
     }, (accessToken, refreshToken, profile, cb) => {
         gitLabClient.accessToken = accessToken;
+        // Ensure the accessToken is stored securely and used for GitLab API requests
         return cb(null, profile);
     }));
 
-    gitLabClient.on('issue', async (data) => {
+    gitLabClient.on('merge_request', async (data) => {
         const projectID = data.project.id;
-        const issueIID = data.object_attributes.iid;
-        await gitLabClient.Issues.createNote(projectID, issueIID, {
-            body: 'Thanks for opening this issue!',
+        const mrIID = data.object_attributes.iid;
+        // Adjusted to handle merge_request events in line with the Flask app's processing
+        await gitLabClient.MergeRequests.createNote(projectID, mrIID, {
+            body: 'Thank you for your merge request!',
         });
     });
 }
