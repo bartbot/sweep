@@ -14,6 +14,7 @@ from functools import cached_property
 from typing import Any
 
 import git
+
 import requests
 from github import Github, PullRequest
 from jwt import encode
@@ -121,6 +122,8 @@ def get_installation_id(username: str) -> str:
 REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
 
 
+# This class is specific to GitHub. For GitLab, see ClonedRepoGitlab in gitlab_utils.py.
+# For corresponding operations in GitLab, refer to the ClonedRepoGitlab class in gitlab_utils.py
 @dataclass
 class ClonedRepo:
     repo_full_name: str
@@ -132,6 +135,8 @@ class ClonedRepo:
 
     class Config:
         arbitrary_types_allowed = True
+    
+    ssh_url_to_repo: str | None = None
 
     @cached_property
     def cached_dir(self):
@@ -178,20 +183,17 @@ class ClonedRepo:
 
     @property
     def clone_url(self):
-        return (
-            f"https://x-access-token:{self.token}@github.com/{self.repo_full_name}.git"
-        )
+        return self.ssh_url_to_repo
 
     def clone(self):
         if not os.path.exists(self.cached_dir):
-            logger.info("Cloning repo...")
+            logger.info("Cloning repo using git command...")
+            clone_cmd = ['git', 'clone', self.clone_url, self.cached_dir]
             if self.branch:
-                repo = git.Repo.clone_from(
-                    self.clone_url, self.cached_dir, branch=self.branch
-                )
-            else:
-                repo = git.Repo.clone_from(self.clone_url, self.cached_dir)
+                clone_cmd.extend(['--branch', self.branch])
+            subprocess.run(clone_cmd, check=True)
             logger.info("Done cloning")
+            repo = git.Repo(self.cached_dir)
         else:
             try:
                 repo = git.Repo(self.cached_dir)
@@ -219,7 +221,10 @@ class ClonedRepo:
             if not self.repo
             else self.repo
         )
-        self.commit_hash = self.repo.get_commits()[0].sha
+        self.ssh_url_to_repo = f'git@github.com:{self.repo_full_name}.git'
+        # Get the commit hash of the latest commit in the repository using the git command
+        subprocess.run(['git', 'clone', self.ssh_url_to_repo, self.cached_dir], check=True)
+        self.commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=self.cached_dir).decode('utf-8').strip()
         self.git_repo = self.clone()
         self.branch = self.branch or SweepConfig.get_branch(self.repo)
 
@@ -318,6 +323,7 @@ class ClonedRepo:
         files = [file[len(root_directory) + 1 :] for file in files]
         return files
 
+
     def get_file_contents(self, file_path, ref=None):
         local_path = (
             f"{self.repo_dir}{file_path}"
@@ -337,6 +343,7 @@ class ClonedRepo:
         file_list = self.get_file_list()
         return len(file_list)
 
+    # To get the commit history from a GitLab repository, use ClonedRepoGitlab.get_commit_history in gitlab_utils.py
     def get_commit_history(
         self, username: str = "", limit: int = 200, time_limited: bool = True
     ):
@@ -402,6 +409,7 @@ class ClonedRepo:
         return all_files[:limit]
 
 
+# This class is specific to GitHub. For the corresponding mock class for GitLab, see `gitlab_utils.py`.
 @dataclass
 class MockClonedRepo(ClonedRepo):
     _repo_dir: str = ""
