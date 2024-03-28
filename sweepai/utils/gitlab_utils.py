@@ -22,8 +22,8 @@ REPO_CACHE_BASE_DIR = "/tmp/cache/repos"
 def get_gitlab_token(private_token: str):
     return private_token
 
-def get_gitlab_client(private_token: str):
-    gl = gitlab.Gitlab('https://gitlab.com', private_token=private_token)
+def get_gitlab_client(oauth_token: str):
+    gl = gitlab.Gitlab('https://gitlab.com', oauth_token=oauth_token, oauth_token=oauth_token)
     gl.auth()
     return gl
 
@@ -118,7 +118,7 @@ class ClonedRepoGitlab:
 
 def get_mr_comments(project_id: str, mr_id: int):
     try:
-        gl = get_gitlab_client(token="your_private_token_here")
+        gl = get_gitlab_client(oauth_token="your_oauth_token_here")
         project = gl.projects.get(project_id)
         mr = project.mergerequests.get(mr_id)
         discussions = mr.discussions.list()
@@ -141,7 +141,7 @@ def get_mr_details(project_id: str, mr_id: int, token: str):
         dict: A dictionary containing MR details such as the MR's branch and other relevant information.
     """
     try:
-        gl = get_gitlab_client(token=token)
+        gl = get_gitlab_client(oauth_token=token)
         project = gl.projects.get(project_id)
         mr = project.mergerequests.get(mr_id)
         return {
@@ -169,7 +169,7 @@ def post_mr_comment(project_id: str, mr_id: int, comment: str, token: str):
         token (str): The GitLab private token.
     """
     try:
-        gl = get_gitlab_client(token="your_private_token_here")
+        gl = get_gitlab_client(oauth_token="your_oauth_token_here")
         project = gl.projects.get(project_id)
         mr = project.mergerequests.get(mr_id)
         mr.discussions.create({'body': comment})
