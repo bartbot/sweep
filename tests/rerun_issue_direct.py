@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 from github import Github
 
 from sweepai.api import app
-from sweepai.events import Account, Installation, IssueRequest
 from sweepai.utils.github_utils import get_github_client, get_installation_id
+from sweepai.web.events import Account, Installation, IssueRequest
 
 
 def fetch_issue_request(issue_url: str, __version__: str = "0"):
@@ -65,7 +65,6 @@ def fetch_issue_request(issue_url: str, __version__: str = "0"):
             type="User",
         ),
     )
-
     return issue_request
 
 
@@ -82,7 +81,7 @@ def test_issue_url(
     better_stack_prefix: str = "https://logs.betterstack.com/team/199101/tail?rf=now-30m&q=metadata.issue_url%3A",
     debug: bool = True,
 ):
-    issue_url = issue_url or typer.prompt("Issue URL")
+    issue_url: str = issue_url or typer.prompt("Issue URL")
     print(f"Fetching issue metadata...")
     issue_request = fetch_issue_request(issue_url)
     print(f"Sending request...")

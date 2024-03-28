@@ -1,3 +1,4 @@
+
 import datetime
 import os
 import shutil
@@ -8,7 +9,7 @@ from time import time
 from typing import Any
 
 import gitlab
-
+import requests
 from sweepai.config.client import SweepConfig
 from sweepai.logn import logger
 from sweepai.utils.ctags import CTags
@@ -92,5 +93,102 @@ class ClonedRepoGitlab:
         return commit_history
 
     # Additional methods like get_file_list, list_directory_tree, get_tree_and_file_list, and get_similar_file_paths would be implemented here following the same pattern as in ClonedRepo.
+    def get_file_list(self):
+        file_list = []
+        for root, dirs, files in os.walk(self.repo_dir):
+            for file in files:
+                file_list.append(os.path.join(root, file))
+        return file_list
+    def list_directory_tree(self):
+        tree = DirectoryTree(self.repo_dir)
+        return tree
+    def get_tree_and_file_list(self):
+        tree = self.list_directory_tree()
+        file_list = self.get_file_list()
+        return tree, file_list
+    def get_similar_file_paths(self, file_path):
+        similar_file_paths = []
+        for root, dirs, files in os.walk(self.repo_dir):
+            for file in files:
+                if file_path in os.path.join(root, file):
+                    similar_file_paths.append(os.path.join(root, file))
+        return similar_file_paths
 
-# Unit tests for ClonedRepoGitlab would be implemented here.
+
+
+def get_mr_comments(project_id: str, mr_id: int):
+    try:
+        gl = get_gitlab_client(token="your_private_token_here")
+        project = gl.projects.get(project_id)
+        mr = project.mergerequests.get(mr_id)
+        discussions = mr.discussions.list()
+        comments = [comment for discussion in discussions for note in discussion.attributes['notes'] for comment in note['body']]
+        return comments
+    except gitlab.GitlabGetError:
+        raise GitLabAPIError("Failed to fetch the specified project or MR.")
+    except gitlab.GitlabError as e:
+        raise GitLabAPIError(f"GitLab API error: {e}")
+
+def get_mr_details(project_id: str, mr_id: int, token: str):
+    """Fetch details of a specific MR.
+
+    Args:
+        project_id (str): The ID of the project.
+        mr_id (int): The ID of the merge request.
+        token (str): The GitLab private token.
+
+    Returns:
+        dict: A dictionary containing MR details such as the MR's branch and other relevant information.
+    """
+    try:
+        gl = get_gitlab_client(token=token)
+        project = gl.projects.get(project_id)
+        mr = project.mergerequests.get(mr_id)
+        return {
+            'id': mr.id,
+            'title': mr.title,
+            'description': mr.description,
+            'source_branch': mr.source_branch,
+            'target_branch': mr.target_branch,
+            'state': mr.state,
+            'created_at': mr.created_at,
+            'updated_at': mr.updated_at,
+        }
+    except gitlab.GitlabGetError:
+        raise GitLabAPIError("Failed to fetch the specified project or MR.")
+    except gitlab.GitlabError as e:
+        raise GitLabAPIError(f"GitLab API error: {e}")
+
+def post_mr_comment(project_id: str, mr_id: int, comment: str, token: str):
+    """Post a comment on a specific MR.
+
+    Args:
+        project_id (str): The ID of the project.
+        mr_id (int): The ID of the merge request.
+        comment (str): The comment to post.
+        token (str): The GitLab private token.
+    """
+    try:
+        gl = get_gitlab_client(token="your_private_token_here")
+        project = gl.projects.get(project_id)
+        mr = project.mergerequests.get(mr_id)
+        mr.discussions.create({'body': comment})
+    except gitlab.GitlabCreateError:
+        raise GitLabAPIError("Failed to post comment to the specified MR.")
+    except gitlab.GitlabError as e:
+        raise GitLabAPIError(f"GitLab API error: {e}")
+=======
+import requests
+from loguru import logger
+
+
+def create_gitlab_mr(token, project_id, source_branch, target_branch, title):
+    url = f"https://gitlab.com/api/v4/projects/{project_id}/merge_requests"
+    headers = {"Authorization": f"Bearer {token}"}
+    data = {"source_branch": source_branch, "target_branch": target_branch, "title": title}
+    response = requests.post(url, headers=headers, data=data)
+    if response.status_code == 201:
+        logger.info("Merge request created successfully.")
+    else:
+        logger.error(f"Failed to create merge request. Status code: {response.status_code}")
+

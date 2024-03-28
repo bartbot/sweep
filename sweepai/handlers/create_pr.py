@@ -1,13 +1,15 @@
 """
 create_pr is a function that creates a pull request from a list of file change requests.
-It is also responsible for handling Sweep config PR creation.
+It is also responsible for handling Sweep config PR creation. test
 """
+
 import datetime
-from typing import Generator
+from typing import Any, Generator
 
 import openai
-from github.Commit import Commit
 from github.Repository import Repository
+from sweepai.utils.gitlab_utils import create_gitlab_mr
+from loguru import logger
 
 from sweepai.config.client import DEFAULT_RULES_STRING, SweepConfig, get_blocked_dirs
 from sweepai.config.server import (
@@ -21,11 +23,11 @@ from sweepai.config.server import (
 from sweepai.core.entities import (
     FileChangeRequest,
     MaxTokensExceeded,
+    Message,
     MockPR,
     PullRequest,
 )
 from sweepai.core.sweep_bot import SweepBot
-from sweepai.logn import logger
 from sweepai.utils.chat_logger import ChatLogger
 from sweepai.utils.event_logger import posthog
 from sweepai.utils.github_utils import ClonedRepo, get_github_client
@@ -51,7 +53,8 @@ def create_pr_changes(
     sandbox=None,
     chat_logger: ChatLogger = None,
     base_branch: str = None,
-) -> Generator[tuple[FileChangeRequest, int, Commit], None, dict]:
+    additional_messages: list[Message] = []
+) -> Generator[tuple[FileChangeRequest, int, Any], None, dict]:
     # Flow:
     # 1. Get relevant files
     # 2: Get human message
@@ -108,6 +111,7 @@ def create_pr_changes(
             file_change_requests,
             pull_request.branch_name,
             blocked_dirs,
+            additional_messages=additional_messages
         ):
             completed_count += changed_file
             logger.info(f"Completed {completed_count}/{fcr_count} files")
@@ -277,7 +281,7 @@ def create_config_pr(
             logger.error(e)
     else:
         # Create branch based on default branch
-        branch = repo.create_git_ref(
+        repo.create_git_ref(
             ref=f"refs/heads/{branch_name}",
             sha=repo.get_branch(repo.default_branch).commit.sha,
         )
@@ -331,7 +335,9 @@ def create_config_pr(
 
     logger.print("Default branch", repo.default_branch)
     logger.print("New branch", branch_name)
-    pr = repo.create_pull(
+    # pr = repo.create_pull(
+    # Replaced GitHub PR creation with GitLab MR creation
+    create_gitlab_mr(
         title=title,
         body="""🎉 Thank you for installing Sweep! We're thrilled to announce the latest update for Sweep, your AI junior developer on GitHub. This PR creates a `sweep.yaml` config file, allowing you to personalize Sweep's performance according to your project requirements.
 
@@ -402,7 +408,7 @@ def add_config_to_top_repos(installation_id, username, repositories, max_repos=3
 def create_gha_pr(g, repo):
     # Create a new branch
     branch_name = "sweep/gha-enable"
-    branch = repo.create_git_ref(
+    repo.create_git_ref(
         ref=f"refs/heads/{branch_name}",
         sha=repo.get_branch(repo.default_branch).commit.sha,
     )
@@ -421,7 +427,9 @@ def create_gha_pr(g, repo):
     )
 
     # Create a PR from this branch to the main branch
-    pr = repo.create_pull(
+    # pr = repo.create_pull(
+    # Replaced GitHub PR creation with GitLab MR creation
+    create_gitlab_mr(
         title="Enable GitHub Actions",
         body="This PR enables GitHub Actions for this repository.",
         head=branch_name,
@@ -445,4 +453,11 @@ body:
         Unit Tests: Write unit tests for <FILE>. Test each function in the file. Make sure to test edge cases.
         Bugs: The bug might be in <FILE>. Here are the logs: ...
         Features: the new endpoint should use the ... class from <FILE> because it contains ... logic.
-        Refactors: We are migrating this function to ... version because ..."""
+        Refactors: We are migrating this function to ... version because ...
+  - type: input
+    id: branch
+    attributes:
+      label: Branch
+      description: The branch to work off of (optional)
+      placeholder: |
+        main"""

@@ -5,6 +5,7 @@ from git import GitCommandError
 from github.PullRequest import PullRequest
 from loguru import logger
 
+from sweepai.config.server import PROGRESS_BASE_URL
 from sweepai.core import entities
 from sweepai.core.entities import FileChangeRequest
 from sweepai.core.sweep_bot import SweepBot
@@ -12,12 +13,17 @@ from sweepai.handlers.create_pr import create_pr_changes
 from sweepai.handlers.on_ticket import get_branch_diff_text, sweeping_gif
 from sweepai.utils.chat_logger import ChatLogger, discord_log_error
 from sweepai.utils.diff import generate_diff
+from sweepai.utils.event_logger import posthog
 from sweepai.utils.github_utils import ClonedRepo, get_github_client
-from sweepai.utils.progress import PaymentContext, TicketContext, TicketProgress, TicketProgressStatus
+from sweepai.utils.progress import (
+    PaymentContext,
+    TicketContext,
+    TicketProgress,
+    TicketProgressStatus,
+)
 from sweepai.utils.prompt_constructor import HumanMessagePrompt
 from sweepai.utils.str_utils import to_branch_name
 from sweepai.utils.ticket_utils import center
-from sweepai.config.server import OPENAI_USE_3_5_MODEL_ONLY
 
 instructions_format = """Resolve the merge conflicts in the PR by incorporating changes from both branches into the final code.
 
@@ -46,25 +52,44 @@ def on_merge_conflict(
     tracking_id: str,
 ):
     # copied from stack_pr
-    token, g = get_github_client(installation_id=installation_id)
-    try:
-        repo = g.get_repo(repo_full_name)
-    except Exception as e:
-        print("Exception occured while getting repo", e)
+    if platform == "github":
+        token, g = get_github_client(installation_id=installation_id)
+        try:
+            repo = g.get_repo(repo_full_name)
+        except Exception as e:
+            print("Exception occured while getting repo", e)
+    elif platform == "gitlab":
+        # GitLab logic will be implemented here
         pass
+    else:
+        raise ValueError("Unsupported platform")
     pr: PullRequest = repo.get_pull(pr_number)
     branch = pr.head.ref
 
     status_message = center(
         f"{sweeping_gif}\n\n"
-        + f'Resolving merge conflicts: track the progress <a href="https://progress.sweep.dev/issues/{tracking_id}">here</a>.'
+        + f'Resolving merge conflicts: track the progress <a href="{PROGRESS_BASE_URL}/issues/{tracking_id}">here</a>.'
     )
     header = f"{status_message}\n---\n\nI'm currently resolving the merge conflicts in this PR. I will stack a new PR once I'm done."
+
+    comment = None
+
+    for current_comment in pr.get_issue_comments():
+        if (
+            current_comment.user.login == "sweep-nightly[bot]"
+            and "Resolving merge conflicts: track the progress" in current_comment.body
+        ):
+            current_comment.edit(body=header)
+            comment = current_comment
+            break
+
     comment = pr.create_issue_comment(body=header)
 
     def edit_comment(body):
         nonlocal comment
         comment.edit(header + "\n\n" + body)
+
+    metadata = {}
 
     try:
         cloned_repo = ClonedRepo(
@@ -73,8 +98,7 @@ def on_merge_conflict(
             branch=branch,
             token=token,
         )
-        metadata = {}
-        start_time = time.time()
+        time.time()
 
         request = f"Sweep: Resolve merge conflicts for PR #{pr_number}: {pr.title}"
         title = request
@@ -90,11 +114,11 @@ def on_merge_conflict(
         )
 
         is_paying_user = chat_logger.is_paying_user()
-        is_consumer_tier = chat_logger.is_consumer_tier()
+        chat_logger.is_consumer_tier()
 
         # this logic is partly taken from on_ticket.py, if there is an issue please refer to that file
         if chat_logger:
-            use_faster_model = OPENAI_USE_3_5_MODEL_ONLY or chat_logger.use_faster_model()
+            use_faster_model = chat_logger.use_faster_model()
         else:
             is_paying_user = True
 
@@ -108,18 +132,32 @@ def on_merge_conflict(
                 branch_name="sweep/" + to_branch_name(request),
                 issue_number=pr_number,
                 is_public=repo.private is False,
-                start_time=time.time(),
-
+                start_time=int(time.time()),
                 # mostly copied from on_ticket, if issue please check that file
                 payment_context=PaymentContext(
                     use_faster_model=use_faster_model,
                     pro_user=is_paying_user,
-                    daily_tickets_used=chat_logger.get_ticket_count(use_date=True)
-                    if chat_logger
-                    else 0,
-                    monthly_tickets_used=chat_logger.get_ticket_count() if chat_logger else 0
-                )
+                    daily_tickets_used=(
+                        chat_logger.get_ticket_count(use_date=True)
+                        if chat_logger
+                        else 0
+                    ),
+                    monthly_tickets_used=(
+                        chat_logger.get_ticket_count() if chat_logger else 0
+                    ),
+                ),
             ),
+        )
+        metadata = {
+            "tracking_id": tracking_id,
+            "username": username,
+            "function": "on_merge_conflict",
+            **ticket_progress.context.dict(),
+        }
+        posthog.capture(
+            username,
+            "started",
+            properties=metadata,
         )
         issue_url = pr.html_url
 
@@ -148,16 +186,20 @@ def on_merge_conflict(
         )
         head_branch.checkout()
         try:
-            git_repo.config_writer().set_value('user','name', 'sweep-nightly[bot]').release()
-            git_repo.config_writer().set_value('user','email', 'team@sweep.dev').release()
+            git_repo.config_writer().set_value(
+                "user", "name", "sweep-nightly[bot]"
+            ).release()
+            git_repo.config_writer().set_value(
+                "user", "email", "team@sweep.dev"
+            ).release()
             git_repo.git.merge("origin/" + pr.base.ref)
-        except GitCommandError as e:
+        except GitCommandError:
             # Assume there are merge conflicts
             pass
 
         git_repo.git.add(update=True)
         # -m and message are needed otherwise exception is thrown
-        git_repo.git.commit('-m', 'commit with merge conflict')
+        git_repo.git.commit("-m", "Start of Merge Conflict Resolution")
 
         origin = git_repo.remotes.origin
         new_url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
@@ -272,7 +314,6 @@ def on_merge_conflict(
 
         for item in generator:
             if isinstance(item, dict):
-                response = item
                 break
             (
                 file_change_request,
@@ -287,15 +328,9 @@ def on_merge_conflict(
         ticket_progress.save()
         edit_comment("Done creating pull request.")
 
-        diff_text = get_branch_diff_text(repo, new_pull_request.branch_name)
+        get_branch_diff_text(repo, new_pull_request.branch_name)
 
-        # Can skip this step too
-        # new_description = PRDescriptionBot().describe_diffs(
-        #     diff_text,
-        #     new_pull_request.title,
-        # )
-        # new_description += f"\n\nResolves merge conflicts in #{pr_number}."
-        new_description = f"This PR resolves the merge conflicts in #{pr_number}. This branch can be directly merged into {pr.base.ref}."
+        new_description = f"This PR resolves the merge conflicts in #{pr_number}. This branch can be directly merged into {pr.base.ref}.\n\nFixes #{pr_number}."
 
         # Create pull request
         new_pull_request.content = new_description
@@ -310,7 +345,11 @@ def on_merge_conflict(
         ticket_progress.context.done_time = time.time()
         ticket_progress.save()
         edit_comment(f"✨ **Created Pull Request:** {github_pull_request.html_url}")
-
+        posthog.capture(
+            username,
+            "success",
+            properties=metadata,
+        )
         return {"success": True}
     except Exception as e:
         print(f"Exception occured: {e}")
@@ -318,12 +357,17 @@ def on_merge_conflict(
             f"> [!CAUTION]\n> \nAn error has occurred: {str(e)} (tracking ID: {tracking_id})"
         )
         discord_log_error(
-            "Error occured in on_merge_conflict.py" + 
-            traceback.format_exc()
+            "Error occured in on_merge_conflict.py"
+            + traceback.format_exc()
             + "\n\n"
             + str(e)
             + "\n\n"
             + f"tracking ID: {tracking_id}"
+        )
+        posthog.capture(
+            username,
+            "failed",
+            properties=metadata,
         )
         return {"success": False}
 
